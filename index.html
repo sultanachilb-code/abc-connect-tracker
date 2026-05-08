@@ -15,21 +15,23 @@
   // ║  REPLACE THIS BLOCK WITH YOUR FIREBASE CONFIG        ║
   // ║  Firebase Console → Project Settings → Your Apps     ║
   // ╚══════════════════════════════════════════════════════╝
-  const firebaseConfig = {
-    apiKey:            "YOUR_API_KEY",
-    authDomain:        "YOUR_PROJECT.firebaseapp.com",
-    projectId:         "YOUR_PROJECT_ID",
-    storageBucket:     "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId:             "const firebaseConfig = {
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
   apiKey: "AIzaSyD0C42FzIc8alR7VHhJ-KjmQVvJ8NKnE7c",
   authDomain: "abc-connect-tracker-a84bd.firebaseapp.com",
   projectId: "abc-connect-tracker-a84bd",
   storageBucket: "abc-connect-tracker-a84bd.firebasestorage.app",
   messagingSenderId: "1041523115283",
   appId: "1:1041523115283:web:ed5b9ffbbe22498d63c6e6"
-};"
-  };
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 
   const app  = initializeApp(firebaseConfig);
   const db   = getFirestore(app);
@@ -208,12 +210,6 @@ input, select, textarea { font-family: inherit; }
 .btn-login:active { transform: none; }
 
 .login-err { color: #dc2626; font-size: 12.5px; font-weight: 500; text-align: center; margin-top: 12px; display: none; }
-.login-firebase-note {
-  margin-top: 22px; padding: 12px 16px;
-  background: var(--blue-50); border: 1px solid var(--blue-200); border-radius: var(--radius-sm);
-  font-size: 12px; color: var(--blue-800); line-height: 1.5;
-}
-.login-firebase-note strong { display: block; font-family: var(--font-display); font-weight: 700; margin-bottom: 3px; }
 
 /* loading overlay */
 .login-loading { display: none; position: absolute; inset: 0; background: rgba(255,255,255,.7); border-radius: var(--radius-lg); align-items: center; justify-content: center; z-index: 10; }
@@ -608,11 +604,11 @@ input, select, textarea { font-family: inherit; }
    FIREBASE STATUS BAR
 ══════════════════════════════════════ */
 .fb-status {
-  background: var(--blue-50); border-bottom: 1px solid var(--blue-200);
-  padding: 6px 26px; font-family: var(--font-display); font-size: 11.5px; font-weight: 600;
-  color: var(--blue-800); display: flex; align-items: center; gap: 8px;
+  background: var(--grey-50); border-bottom: 1px solid var(--grey-200);
+  padding: 5px 26px; font-family: var(--font-display); font-size: 11px; font-weight: 600;
+  color: var(--grey-400); display: flex; align-items: center; gap: 7px;
 }
-.fb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue-500); display: inline-block; }
+.fb-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; display: inline-block; }
 .fb-dot.offline { background: #f59e0b; }
 
 /* ══════════════════════════════════════
@@ -649,11 +645,7 @@ input, select, textarea { font-family: inherit; }
 
     <button class="btn-login" onclick="doLogin()">Sign In →</button>
     <div class="login-err" id="l-err"></div>
-
-    <div class="login-firebase-note">
-      <strong>⚙️ Firebase Setup Required</strong>
-      Replace the <code>firebaseConfig</code> in the &lt;script type="module"&gt; block with your own Firebase project credentials. Each user needs a Firebase Auth account created with the email listed below.
-    </div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Retail Property Group &nbsp;·&nbsp; Confidential</div>
   </div>
 </div>
 
@@ -962,11 +954,12 @@ async function doLogin() {
     initApp();
   } catch(err) {
     loading.classList.remove('show');
-    let msg = 'Sign in failed. Check your password.';
-    if(err.code==='auth/user-not-found') msg = 'No Firebase account for this user. Create it in Firebase Console → Authentication.';
-    if(err.code==='auth/wrong-password') msg = 'Incorrect password.';
-    if(err.code==='auth/invalid-api-key' || err.message.includes('firebaseConfig')) msg = '⚙️ Firebase not configured yet — update the firebaseConfig in the source.';
-    if(err.code==='auth/network-request-failed') msg = 'Network error. Check your connection.';
+    let msg = 'Incorrect password. Please try again.';
+    if(err.code==='auth/user-not-found'||err.code==='auth/invalid-credential') msg = 'Incorrect email or password.';
+    if(err.code==='auth/wrong-password') msg = 'Incorrect password. Please try again.';
+    if(err.code==='auth/too-many-requests') msg = 'Too many attempts. Please wait a moment and try again.';
+    if(err.code==='auth/invalid-api-key'||err.message?.includes('firebaseConfig')||err.message?.includes('YOUR_API_KEY')) msg = 'System configuration error. Please contact IT.';
+    if(err.code==='auth/network-request-failed') msg = 'Network error. Check your connection and try again.';
     showErr(msg);
   }
 }
@@ -1014,7 +1007,7 @@ function initApp() {
 
 function updateFbStatus(ok) {
   document.getElementById('fb-dot').className = 'fb-dot' + (ok?'':' offline');
-  document.getElementById('fb-status-txt').textContent = ok ? 'Connected to Firebase Firestore — data is live' : 'Firebase not connected — using local data';
+  document.getElementById('fb-status-txt').textContent = ok ? 'Live — Firebase Firestore connected' : 'Connecting…';
 }
 
 /* ─────────────────────────────────────
