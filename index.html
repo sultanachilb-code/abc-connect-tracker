@@ -15,23 +15,14 @@
   // ║  REPLACE THIS BLOCK WITH YOUR FIREBASE CONFIG        ║
   // ║  Firebase Console → Project Settings → Your Apps     ║
   // ╚══════════════════════════════════════════════════════╝
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyD0C42FzIc8alR7VHhJ-KjmQVvJ8NKnE7c",
-  authDomain: "abc-connect-tracker-a84bd.firebaseapp.com",
-  projectId: "abc-connect-tracker-a84bd",
-  storageBucket: "abc-connect-tracker-a84bd.firebasestorage.app",
-  messagingSenderId: "1041523115283",
-  appId: "1:1041523115283:web:ed5b9ffbbe22498d63c6e6"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+  const firebaseConfig = {
+    apiKey:            "AIzaSyD0C42FzIc8alR7VHhJ-KjmQVvJ8NKnE7c",
+    authDomain:        "abc-connect-tracker-a84bd.firebaseapp.com",
+    projectId:         "abc-connect-tracker-a84bd",
+    storageBucket:     "abc-connect-tracker-a84bd.firebasestorage.app",
+    messagingSenderId: "1041523115283",
+    appId:             "1:1041523115283:web:ed5b9ffbbe22498d63c6e6"
+  };
 
   const app  = initializeApp(firebaseConfig);
   const db   = getFirestore(app);
@@ -146,7 +137,7 @@ input, select, textarea { font-family: inherit; }
   background: var(--white);
   border-radius: var(--radius-lg);
   padding: 48px 44px 40px;
-  width: 100%; max-width: 460px;
+  width: 100%; max-width: 400px;
   box-shadow: 0 32px 80px rgba(0,0,0,.35);
   position: relative; z-index: 1;
   animation: cardIn .35s cubic-bezier(.22,1,.36,1);
@@ -167,27 +158,7 @@ input, select, textarea { font-family: inherit; }
 .login-brand span { color: var(--blue-600); }
 .login-sub { font-size: 12px; color: var(--grey-400); letter-spacing: 1.8px; text-transform: uppercase; margin-top: 5px; font-weight: 600; }
 
-.login-sect-label {
-  font-family: var(--font-display); font-size: 11px; font-weight: 700;
-  color: var(--grey-400); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;
-}
-.login-user-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
-.login-user-btn {
-  background: var(--grey-50); border: 1.5px solid var(--grey-200);
-  border-radius: var(--radius-sm); padding: 12px 6px 10px;
-  text-align: center; cursor: pointer; transition: all .15s;
-}
-.login-user-btn:hover { border-color: var(--blue-400); background: var(--blue-50); }
-.login-user-btn.selected { border-color: var(--blue-600); background: var(--blue-50); box-shadow: 0 0 0 3px var(--blue-100); }
-.login-user-btn .uicon {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: var(--blue-100); display: flex; align-items: center; justify-content: center;
-  margin: 0 auto 7px; transition: background .15s;
-}
-.login-user-btn.selected .uicon, .login-user-btn:hover .uicon { background: var(--blue-200); }
-.login-user-btn .uicon svg { width: 20px; height: 20px; stroke: var(--blue-700); stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.login-user-btn .uname { font-family: var(--font-display); font-size: 10px; font-weight: 700; color: var(--grey-600); line-height: 1.2; }
-.login-user-btn.selected .uname { color: var(--blue-700); }
+
 
 .field-label { display: block; font-family: var(--font-display); font-size: 11px; font-weight: 700; color: var(--grey-500); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
 .field-inp {
@@ -634,9 +605,10 @@ input, select, textarea { font-family: inherit; }
       <div class="login-sub">Issue Tracker · IT Portal</div>
     </div>
 
-    <div class="login-sect-label">Select your account</div>
-    <div class="login-user-grid" id="lgrid-1"></div>
-    <div class="login-user-grid" id="lgrid-2"></div>
+    <div class="field-group" style="margin-top:0;">
+      <label class="field-label">Email Address</label>
+      <input class="field-inp" type="email" id="l-email" placeholder="yourname@abc.com.lb" onkeydown="if(event.key==='Enter')document.getElementById('l-pass').focus()">
+    </div>
 
     <div class="field-group">
       <label class="field-label">Password</label>
@@ -880,7 +852,7 @@ const USERS = [
   { id:'admin', name:'Admin',            role:'Admin', mall:'ABC HQ',           email:'admin@abc.com.lb'       },
   { id:'it1',   name:'IT – Ahmad',       role:'IT',    mall:'IT Department',    email:'it1@abc.com.lb'         },
   { id:'it2',   name:'IT – Sara',        role:'IT',    mall:'IT Department',    email:'it2@abc.com.lb'         },
-  { id:'vrd',   name:'ABC Verdun',       role:'User',  mall:'Verdun Mall',      email:'salaachi@abc.com.lb'      },
+  { id:'vrd',   name:'ABC Verdun',       role:'User',  mall:'Verdun Mall',      email:'salaachi@abc.com.lb'    },
   { id:'ach',   name:'ABC Achrafieh',    role:'User',  mall:'Achrafieh Mall',   email:'achrafieh@abc.com.lb'   },
   { id:'dby',   name:'ABC Dbayeh',       role:'User',  mall:'Dbayeh',           email:'dbayeh@abc.com.lb'      },
   { id:'vds',   name:'Verdun DS',        role:'User',  mall:'Verdun DS',        email:'verdunds@abc.com.lb'    },
@@ -915,29 +887,13 @@ function genCode() { LC++; localStorage.setItem('abc_lc',LC); return 'ABC-'+Stri
 /* ─────────────────────────────────────
    LOGIN
 ───────────────────────────────────── */
-function buildLoginGrid() {
-  const userIcon = `<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
-  ['lgrid-1','lgrid-2'].forEach((rid,ri) => {
-    const row = document.getElementById(rid);
-    row.innerHTML = '';
-    USERS.slice(ri*4, ri*4+4).forEach(usr => {
-      const btn = document.createElement('div');
-      btn.className = 'login-user-btn'; btn.dataset.uid = usr.id;
-      btn.innerHTML = `<div class="uicon">${userIcon}</div><div class="uname">${usr.name}</div>`;
-      btn.onclick = () => { document.querySelectorAll('.login-user-btn').forEach(b=>b.classList.remove('selected')); btn.classList.add('selected'); };
-      row.appendChild(btn);
-    });
-  });
-}
+
 
 async function doLogin() {
-  const sel  = document.querySelector('.login-user-btn.selected');
-  const pass = document.getElementById('l-pass').value;
-  if(!sel)  { showErr('Please select a user account.'); return; }
-  if(!pass) { showErr('Please enter your password.'); return; }
-
-  const usr = USERS.find(x=>x.id===sel.dataset.uid);
-  if(!usr)  { showErr('User not found.'); return; }
+  const email = document.getElementById('l-email').value.trim();
+  const pass  = document.getElementById('l-pass').value;
+  if(!email) { showErr('Please enter your email address.'); return; }
+  if(!pass)  { showErr('Please enter your password.'); return; }
 
   const loading = document.getElementById('login-loading');
   loading.classList.add('show');
@@ -945,20 +901,19 @@ async function doLogin() {
 
   try {
     const fb = window.__fb;
-    if(!fb) throw new Error('Firebase not configured. Please update firebaseConfig in the source code.');
-    const cred = await fb.signInWithEmailAndPassword(fb.auth, usr.email, pass);
-    CU = usr;
+    if(!fb) throw new Error('Firebase not configured.');
+    await fb.signInWithEmailAndPassword(fb.auth, email, pass);
+    const usr = USERS.find(x=>x.email.toLowerCase()===email.toLowerCase());
+    CU = usr || { id:'unknown', name:email.split('@')[0], role:'User', mall:'–', email };
     loading.classList.remove('show');
     document.getElementById('login-page').style.display='none';
     document.getElementById('app').style.display='block';
     initApp();
   } catch(err) {
     loading.classList.remove('show');
-    let msg = 'Incorrect password. Please try again.';
-    if(err.code==='auth/user-not-found'||err.code==='auth/invalid-credential') msg = 'Incorrect email or password.';
-    if(err.code==='auth/wrong-password') msg = 'Incorrect password. Please try again.';
+    let msg = 'Incorrect email or password. Please try again.';
     if(err.code==='auth/too-many-requests') msg = 'Too many attempts. Please wait a moment and try again.';
-    if(err.code==='auth/invalid-api-key'||err.message?.includes('firebaseConfig')||err.message?.includes('YOUR_API_KEY')) msg = 'System configuration error. Please contact IT.';
+    if(err.code==='auth/invalid-api-key'||err.message?.includes('YOUR_API_KEY')) msg = 'System configuration error. Please contact IT.';
     if(err.code==='auth/network-request-failed') msg = 'Network error. Check your connection and try again.';
     showErr(msg);
   }
@@ -971,9 +926,9 @@ async function doLogout() {
   CU=null;
   document.getElementById('login-page').style.display='flex';
   document.getElementById('app').style.display='none';
+  document.getElementById('l-email').value='';
   document.getElementById('l-pass').value='';
   document.getElementById('l-err').style.display='none';
-  document.querySelectorAll('.login-user-btn').forEach(b=>b.classList.remove('selected'));
   if(window._logUnsub) window._logUnsub();
 }
 
@@ -1377,8 +1332,6 @@ function toast(title,body,icon='ℹ️') {
 /* ─────────────────────────────────────
    BOOT
 ───────────────────────────────────── */
-buildLoginGrid();
-
 // Check Firebase auth state on load
 window.addEventListener('load', ()=>{
   setTimeout(()=>{
