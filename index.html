@@ -5,16 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ABC Connect – Issue Tracker</title>
 
-<!-- Firebase SDK -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, doc, getDocs, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot, orderBy, query, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
-  // ╔══════════════════════════════════════════════════════╗
-  // ║  REPLACE THIS BLOCK WITH YOUR FIREBASE CONFIG        ║
-  // ║  Firebase Console → Project Settings → Your Apps     ║
-  // ╚══════════════════════════════════════════════════════╝
+<!-- Firebase loaded via compat CDN — works in all environments including GitHub Pages -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
   const firebaseConfig = {
     apiKey:            "AIzaSyD0C42FzIc8alR7VHhJ-KjmQVvJ8NKnE7c",
     authDomain:        "abc-connect-tracker-a84bd.firebaseapp.com",
@@ -23,13 +18,9 @@
     messagingSenderId: "1041523115283",
     appId:             "1:1041523115283:web:ed5b9ffbbe22498d63c6e6"
   };
-
-  const app  = initializeApp(firebaseConfig);
-  const db   = getFirestore(app);
-  const auth = getAuth(app);
-
-  // Expose to global scope so non-module scripts can use them
-  window.__fb = { db, auth, collection, doc, getDocs, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot, orderBy, query, serverTimestamp, arrayUnion, signInWithEmailAndPassword, signOut, onAuthStateChanged };
+  firebase.initializeApp(firebaseConfig);
+  const _auth = firebase.auth();
+  const _db   = firebase.firestore();
 </script>
 
 <!-- EmailJS SDK for email notifications -->
@@ -989,6 +980,13 @@ input, select, textarea { font-family: inherit; }
 
 <!-- ═══════════════════ SCRIPTS ═══════════════════ -->
 <script>
+/* Firebase compat helpers — maps old __fb calls to compat SDK */
+const _serverTimestamp = firebase.firestore.FieldValue.serverTimestamp;
+const _arrayUnion = firebase.firestore.FieldValue.arrayUnion;
+const _colRef = (col) => _db.collection(col);
+const _docRef = (col, id) => _db.collection(col).doc(id);
+</script>
+<script>
 /* ─────────────────────────────────────
    USERS CONFIG
    Each user must have a matching Firebase Auth email account
@@ -1037,10 +1035,6 @@ async function doLogin() {
   if(!email) { showErr('Please enter your email address.'); return; }
   if(!pass)  { showErr('Please enter your password.'); return; }
 
-  // Wait up to 3s for Firebase module to load
-  let attempts = 0;
-  while(!window.__fb && attempts < 30) { await new Promise(r=>setTimeout(r,100)); attempts++; }
-
   const loading = document.getElementById('login-loading');
   loading.classList.add('show');
   document.getElementById('l-err').style.display='none';
@@ -1048,9 +1042,7 @@ async function doLogin() {
   if(loginBtn) { loginBtn.disabled=true; loginBtn.textContent='Signing in…'; }
 
   try {
-    const fb = window.__fb;
-    if(!fb) throw new Error('Firebase not ready. Please refresh the page.');
-    const cred = await fb.signInWithEmailAndPassword(fb.auth, email, pass);
+    const cred = await _auth.signInWithEmailAndPassword(email, pass);
     // Load user profile from Firestore
     await loadUserProfile(cred.user);
     loading.classList.remove('show');
@@ -1071,7 +1063,7 @@ async function doLogin() {
     if(err.code==='auth/too-many-requests')        msg = 'Too many failed attempts. Please wait a few minutes.';
     if(err.code==='auth/network-request-failed')   msg = 'Network error. Check your internet connection.';
     if(err.code==='auth/api-key-not-valid')        msg = 'Firebase config error. Please contact IT.';
-    if(!window.__fb)                               msg = 'App not ready yet. Please wait 2 seconds and try again.';
+
     showErr(msg);
   }
 }
@@ -1079,7 +1071,7 @@ async function doLogin() {
 function showErr(msg) { const e=document.getElementById('l-err'); e.style.display='block'; e.textContent=msg; }
 
 async function doLogout() {
-  try { if(window.__fb) await window.__fb.signOut(window.__fb.auth); } catch(e) {}
+  try { await _auth.signOut(); } catch(e) {}
   CU=null; USERS=[];
   document.getElementById('login-page').style.display='flex';
   document.getElementById('app').style.display='none';
@@ -1093,10 +1085,8 @@ async function doLogout() {
    INIT
 ───────────────────────────────────── */
 async function loadUserProfile(fbUser) {
-  const fb = window.__fb;
-  // Try to load profile from Firestore users collection
   try {
-    const snap = await fb.getDocs(fb.collection(fb.db,'users'));
+    const snap = await _db.collection('users').get();
     USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   } catch(e) { USERS = []; }
   // Find current user by email
@@ -1116,7 +1106,7 @@ async function loadUserProfile(fbUser) {
     };
     // Save to Firestore (non-blocking — login succeeds even if this fails)
     try {
-      await fb.setDoc(fb.doc(fb.db,'users',fbUser.uid), { ...CU, createdAt: fb.serverTimestamp() });
+      await _db.collection('users').doc(fbUser.uid).set({ ...CU, createdAt: _serverTimestamp() });
       USERS.push(CU);
     } catch(e) {
       console.warn('Could not save user profile to Firestore:', e.code, e.message);
@@ -1145,22 +1135,19 @@ function initApp() {
   populateUserFilter();
 
   // Firebase real-time listener for logs
-  const fb = window.__fb;
-  if(fb) {
-    // Also live-listen to users collection
-    fb.onSnapshot(fb.collection(fb.db,'users'), snap => {
+  if(true) {
+    _db.collection('users').onSnapshot(snap => {
       USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
       populateUserFilter();
       if(document.getElementById('pg-users').style.display!=='none') renderUsers();
       if(document.getElementById('pg-admin').style.display!=='none') renderAdminTable();
     });
-    const q = fb.query(fb.collection(fb.db,'logs'), fb.orderBy('createdAt','desc'));
-    window._logUnsub = fb.onSnapshot(q, snap => {
+    window._logUnsub = _db.collection('logs').orderBy('createdAt','desc').onSnapshot(snap => {
       LOGS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
       renderBoard(); renderStats();
       if(document.getElementById('pg-logs').style.display!=='none') renderLogs();
       updateFbStatus(true);
-    }, err => { updateFbStatus(false); console.error(err); });
+    }, err => { updateFbStatus(false); console.error('Logs snapshot error:', err); });
   } else { updateFbStatus(false); }
 
   renderNotifs(); showPage('board');
@@ -1369,9 +1356,8 @@ async function saveUserRow(userId) {
   if(!name)  { statusEl.textContent='⚠ Name required'; statusEl.className='save-status err'; return; }
   if(!mall||mall==='–') { statusEl.textContent='⚠ Select a flagship'; statusEl.className='save-status err'; return; }
   btn.disabled=true; btn.textContent='Saving…'; statusEl.textContent='';
-  const fb=window.__fb;
   try {
-    await fb.updateDoc(fb.doc(fb.db,'users',userId),{ name, role, mall, updatedAt:fb.serverTimestamp() });
+    await _db.collection('users').doc(userId).update({ name, role, mall, updatedAt:_serverTimestamp() });
     // Update local cache
     const u=USERS.find(x=>x.id===userId); if(u){u.name=name;u.role=role;u.mall=mall;}
     // If saving self, update sidebar
@@ -1441,10 +1427,9 @@ async function submitLog() {
     });
   }
   const code=genCode();
-  const fb=window.__fb;
   if(fb) {
     try {
-      const docRef = await fb.addDoc(fb.collection(fb.db,'logs'), { code, subject, issueType:type, status:'Sent', createdBy:CU.id, createdAt:fb.serverTimestamp(), updatedAt:fb.serverTimestamp(), details:det, messages:[] });
+      const docRef = await _db.collection('logs').add({ code, subject, issueType:type, status:'Sent', createdBy:CU.id, createdAt:_serverTimestamp(), updatedAt:_serverTimestamp(), details:det, messages:[] });
       closeOverlay('o-nl'); toast('Log Submitted',`${code} sent to IT team.`,'📨');
       addNotif('New Log Submitted',`${code}: ${subject}`,null);
       // Email IT + Admin
@@ -1541,10 +1526,9 @@ function openDetail(lid) {
 async function updateStatus(lid, newS) {
   const log=LOGS.find(l=>l.id===lid); if(!log) return;
   const old=log.status;
-  const fb=window.__fb;
   if(fb) {
     try {
-      await fb.updateDoc(fb.doc(fb.db,'logs',lid),{ status:newS, updatedAt:fb.serverTimestamp() });
+      await _db.collection('logs').doc(lid).update({ status:newS, updatedAt:_serverTimestamp() });
       toast('Status Updated',`${log.code} → ${newS}`,'✅');
       addNotif('Status Updated',`${log.code}: "${old}" → "${newS}"`,lid);
       const sc=S_CLS[newS]||'sent';
@@ -1577,10 +1561,9 @@ async function sendMsg(lid) {
   const txt=inp.value.trim(); if(!txt) return;
   const log=LOGS.find(l=>l.id===lid); if(!log) return;
   const msg={ userId:CU.id, text:txt, at:new Date().toISOString(), readBy:[CU.id] };
-  const fb=window.__fb;
   if(fb) {
     try {
-      await fb.updateDoc(fb.doc(fb.db,'logs',lid),{ messages:fb.arrayUnion(msg), updatedAt:fb.serverTimestamp() });
+      await _db.collection('logs').doc(lid).update({ messages:_arrayUnion(msg), updatedAt:_serverTimestamp() });
       inp.value=''; document.getElementById('mdd').style.display='none';
       const uico=`<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
       const txtH=txt.replace(/@(\S+)/g,'<span class="chat-mention">@$1</span>');
@@ -1651,14 +1634,14 @@ function toast(title,body,icon='ℹ️') {
    Then paste your IDs below.
 ───────────────────────────────────── */
 const EJS = {
-  serviceId:  'service_fde9z74',   // e.g. 'service_abc123'
-  templateId: 'template_yac2zzd',  // e.g. 'template_xyz456'
-  publicKey:  'Kg4cZiHkAepfKM7C2',   // e.g. 'user_AbCdEfGhIj'
-  enabled:    true,               // set true after configuring above
+  serviceId:  'service_fde9z74',
+  templateId: 'template_yac2zzd',
+  publicKey:  'Kg4cZiHkAepfKM7C2',
+  enabled:    true,
 };
 
 function initEmailJS() {
-  if(EJS.publicKey && EJS.publicKey!=='YOUR_PUBLIC_KEY') {
+  if(EJS.enabled && EJS.publicKey) {
     if(typeof emailjs !== 'undefined') {
       emailjs.init({ publicKey: EJS.publicKey });
       EJS.enabled = true;
@@ -1803,9 +1786,8 @@ service cloud.firestore {
 window.addEventListener('load', ()=>{
   initEmailJS();
   setTimeout(()=>{
-    const fb=window.__fb;
-    if(!fb) { updateFbStatus&&updateFbStatus(false); return; }
-    fb.onAuthStateChanged(fb.auth, async user=>{
+      if(!fb) { updateFbStatus&&updateFbStatus(false); return; }
+    _auth.onAuthStateChanged(async user=>{
       if(user && !CU) {
         try {
           await loadUserProfile(user);
