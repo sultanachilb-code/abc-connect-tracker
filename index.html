@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ABC Connect – Issue Tracker</title>
 
-<!-- Firebase loaded via compat CDN — works in all environments including GitHub Pages -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Firebase compat SDK via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.0/firebase-app-compat.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.0/firebase-auth-compat.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.0/firebase-firestore-compat.min.js"></script>
 <script>
   const firebaseConfig = {
     apiKey:            "AIzaSyD0C42FzIc8alR7VHhJ-KjmQVvJ8NKnE7c",
@@ -18,7 +18,11 @@
     messagingSenderId: "1041523115283",
     appId:             "1:1041523115283:web:ed5b9ffbbe22498d63c6e6"
   };
-  firebase.initializeApp(firebaseConfig);
+  try {
+    firebase.initializeApp(firebaseConfig);
+  } catch(e) {
+    // already initialized on hot-reload
+  }
   const _auth = firebase.auth();
   const _db   = firebase.firestore();
 </script>
@@ -980,11 +984,9 @@ input, select, textarea { font-family: inherit; }
 
 <!-- ═══════════════════ SCRIPTS ═══════════════════ -->
 <script>
-/* Firebase compat helpers — maps old __fb calls to compat SDK */
-const _serverTimestamp = firebase.firestore.FieldValue.serverTimestamp;
-const _arrayUnion = firebase.firestore.FieldValue.arrayUnion;
-const _colRef = (col) => _db.collection(col);
-const _docRef = (col, id) => _db.collection(col).doc(id);
+/* Firebase helpers */
+const _serverTimestamp = () => firebase.firestore.FieldValue.serverTimestamp();
+const _arrayUnion = (...args) => firebase.firestore.FieldValue.arrayUnion(...args);
 </script>
 <script>
 /* ─────────────────────────────────────
@@ -1140,20 +1142,18 @@ function initApp() {
   populateUserFilter();
 
   // Firebase real-time listener for logs
-  if(true) {
-    _db.collection('users').onSnapshot(snap => {
-      USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-      populateUserFilter();
-      if(document.getElementById('pg-users').style.display!=='none') renderUsers();
-      if(document.getElementById('pg-admin').style.display!=='none') renderAdminTable();
-    });
-    window._logUnsub = _db.collection('logs').orderBy('createdAt','desc').onSnapshot(snap => {
-      LOGS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-      renderBoard(); renderStats();
-      if(document.getElementById('pg-logs').style.display!=='none') renderLogs();
-      updateFbStatus(true);
-    }, err => { updateFbStatus(false); console.error('Logs snapshot error:', err); });
-  } else { updateFbStatus(false); }
+  _db.collection('users').onSnapshot(snap => {
+    USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    populateUserFilter();
+    if(document.getElementById('pg-users').style.display!=='none') renderUsers();
+    if(document.getElementById('pg-admin').style.display!=='none') renderAdminTable();
+  });
+  window._logUnsub = _db.collection('logs').orderBy('createdAt','desc').onSnapshot(snap => {
+    LOGS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    renderBoard(); renderStats();
+    if(document.getElementById('pg-logs').style.display!=='none') renderLogs();
+    updateFbStatus(true);
+  }, err => { updateFbStatus(false); console.error('Logs snapshot error:', err); });
 
   renderNotifs(); showPage('board');
 }
@@ -1432,18 +1432,16 @@ async function submitLog() {
     });
   }
   const code=genCode();
-  if(true) {
-    try {
-      const docRef = await _db.collection('logs').add({ code, subject, issueType:type, status:'Sent', createdBy:CU.id, createdAt:_serverTimestamp(), updatedAt:_serverTimestamp(), details:det, messages:[] });
-      closeOverlay('o-nl'); toast('Log Submitted',`${code} sent to IT team.`,'📨');
-      addNotif('New Log Submitted',`${code}: ${subject}`,null);
-      // Email IT + Admin
-      const newLog = { id:docRef.id, code, subject, issueType:type, status:'Sent', createdBy:CU.id };
-      notifyLogEvent(newLog, 'New Log Submitted', `${CU.name||CU.email} submitted a new ${type}: ${subject}`);
-    } catch(e) { toast('Error','Could not save to Firebase: '+e.message,'❌'); }
-  } catch(submitErr) {
-    toast('Error', 'Could not submit log: ' + submitErr.message, '❌');
-    console.error('[SUBMIT]', submitErr);
+  try {
+    const docRef = await _db.collection('logs').add({ code, subject, issueType:type, status:'Sent', createdBy:CU.id, createdAt:_serverTimestamp(), updatedAt:_serverTimestamp(), details:det, messages:[] });
+    closeOverlay('o-nl');
+    toast('Log Submitted',`${code} sent to IT team.`,'📨');
+    addNotif('New Log Submitted',`${code}: ${subject}`,null);
+    const newLog = { id:docRef.id, code, subject, issueType:type, status:'Sent', createdBy:CU.id };
+    notifyLogEvent(newLog, 'New Log Submitted', `${CU.name||CU.email} submitted a new ${type}: ${subject}`);
+  } catch(e) {
+    toast('Error','Could not save: '+e.message,'❌');
+    console.error('[SUBMIT]', e.code, e.message);
   }
 }
 
@@ -1530,8 +1528,7 @@ function openDetail(lid) {
 async function updateStatus(lid, newS) {
   const log=LOGS.find(l=>l.id===lid); if(!log) return;
   const old=log.status;
-  if(true) {
-    try {
+  try {
       await _db.collection('logs').doc(lid).update({ status:newS, updatedAt:_serverTimestamp() });
       toast('Status Updated',`${log.code} → ${newS}`,'✅');
       addNotif('Status Updated',`${log.code}: "${old}" → "${newS}"`,lid);
@@ -1565,8 +1562,7 @@ async function sendMsg(lid) {
   const txt=inp.value.trim(); if(!txt) return;
   const log=LOGS.find(l=>l.id===lid); if(!log) return;
   const msg={ userId:CU.id, text:txt, at:new Date().toISOString(), readBy:[CU.id] };
-  if(true) {
-    try {
+  try {
       await _db.collection('logs').doc(lid).update({ messages:_arrayUnion(msg), updatedAt:_serverTimestamp() });
       inp.value=''; document.getElementById('mdd').style.display='none';
       const uico=`<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
