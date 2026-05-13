@@ -5,11 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ABC Connect – Issue Tracker</title>
 
-<!-- Firebase compat SDK via CDN -->
-<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.0/firebase-app-compat.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.0/firebase-auth-compat.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.0/firebase-firestore-compat.min.js"></script>
-<script>
+<!-- Firebase via importmap — works everywhere, no CDN blocking -->
+<script type="importmap">
+{
+  "imports": {
+    "firebase/app":       "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js",
+    "firebase/auth":      "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"
+  }
+}
+</script>
+<script type="module">
+  import { initializeApp }                                     from 'firebase/app';
+  import { getAuth, signInWithEmailAndPassword, signOut,
+           onAuthStateChanged }                                from 'firebase/auth';
+  import { getFirestore, collection, doc, getDoc, getDocs,
+           setDoc, addDoc, updateDoc, deleteDoc,
+           onSnapshot, orderBy, query, where,
+           serverTimestamp, arrayUnion }                       from 'firebase/firestore';
+
   const firebaseConfig = {
     apiKey:            "AIzaSyD0C42FzIc8alR7VHhJ-KjmQVvJ8NKnE7c",
     authDomain:        "abc-connect-tracker-a84bd.firebaseapp.com",
@@ -18,13 +32,42 @@
     messagingSenderId: "1041523115283",
     appId:             "1:1041523115283:web:ed5b9ffbbe22498d63c6e6"
   };
-  try {
-    firebase.initializeApp(firebaseConfig);
-  } catch(e) {
-    // already initialized on hot-reload
-  }
-  const _auth = firebase.auth();
-  const _db   = firebase.firestore();
+
+  const _app  = initializeApp(firebaseConfig);
+  const _auth = getAuth(_app);
+  const _db   = getFirestore(_app);
+
+  // Expose helpers to global scope for the main script
+  window._auth            = _auth;
+  window._db              = _db;
+  window._serverTimestamp = serverTimestamp;
+  window._arrayUnion      = arrayUnion;
+  window._onAuthChanged   = (cb) => onAuthStateChanged(_auth, cb);
+
+  // Firebase operation wrappers — all async, all globally accessible
+  window._fbSignIn   = (email, pass) => signInWithEmailAndPassword(_auth, email, pass);
+  window._fbSignOut  = ()            => signOut(_auth);
+  window._fbGetDoc   = (col, id)     => getDoc(doc(_db, col, id));
+  window._fbSetDoc   = (col, id, d)  => setDoc(doc(_db, col, id), d);
+  window._fbAddDoc   = (col, d)      => addDoc(collection(_db, col), d);
+  window._fbUpdateDoc= (col, id, d)  => updateDoc(doc(_db, col, id), d);
+  window._fbDeleteDoc= (col, id)     => deleteDoc(doc(_db, col, id));
+  window._fbGetAll   = (col)         => getDocs(collection(_db, col));
+  window._fbOnSnap   = (col, cb, err, ord) => {
+    const q = ord ? query(collection(_db, col), orderBy(ord,'desc')) : collection(_db, col);
+    return onSnapshot(q, cb, err);
+  };
+  window._fbAppendMsg = (col, id, msg) => updateDoc(doc(_db, col, id), {
+    messages: arrayUnion(msg),
+    updatedAt: serverTimestamp()
+  });
+  window._fbReady    = true;
+
+  // Boot auth listener once Firebase is ready
+  window.addEventListener('load', () => {
+    setTimeout(() => window._bootApp && window._bootApp(), 100);
+  });
+  document.dispatchEvent(new Event('firebase-ready'));
 </script>
 
 <!-- EmailJS SDK for email notifications -->
@@ -181,8 +224,7 @@ input, select, textarea { font-family: inherit; }
 .login-err { color: #dc2626; font-size: 12.5px; font-weight: 500; text-align: center; margin-top: 12px; display: none; }
 
 /* loading overlay */
-.login-loading { display: none; position: absolute; inset: 0; background: rgba(255,255,255,.7); border-radius: var(--radius-lg); align-items: center; justify-content: center; z-index: 10; }
-.login-loading.show { display: flex; }
+.login-loading { display: none !important; }
 .spinner { width: 28px; height: 28px; border: 3px solid var(--blue-200); border-top-color: var(--blue-600); border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -673,7 +715,7 @@ input, select, textarea { font-family: inherit; }
 
     <button class="btn-login" id="btn-login" onclick="doLogin()">Sign In →</button>
     <div class="login-err" id="l-err"></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships &nbsp;·&nbsp; <strong style="color:var(--grey-500);">v2.0</strong></div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships &nbsp;·&nbsp; <strong style="color:var(--grey-500);">v2.2</strong></div>
   </div>
 </div>
 
@@ -984,9 +1026,9 @@ input, select, textarea { font-family: inherit; }
 
 <!-- ═══════════════════ SCRIPTS ═══════════════════ -->
 <script>
-/* Firebase helpers */
-const _serverTimestamp = () => firebase.firestore.FieldValue.serverTimestamp();
-const _arrayUnion = (...args) => firebase.firestore.FieldValue.arrayUnion(...args);
+/* Firebase helpers — resolved from module script via window.* */
+const _st  = () => window._st();        // serverTimestamp
+const _au  = (...a) => window._arrayUnion(...a);     // arrayUnion
 </script>
 <script>
 /* ─────────────────────────────────────
@@ -1037,37 +1079,18 @@ async function doLogin() {
   if(!email) { showErr('Please enter your email address.'); return; }
   if(!pass)  { showErr('Please enter your password.'); return; }
 
-  const loading = document.getElementById('login-loading');
-  loading.classList.add('show');
   document.getElementById('l-err').style.display='none';
   const loginBtn = document.getElementById('btn-login');
   if(loginBtn) { loginBtn.disabled=true; loginBtn.textContent='Signing in…'; }
 
   try {
-    const cred = await _auth.signInWithEmailAndPassword(email, pass);
-    // Race: profile load vs 8s timeout
-    await Promise.race([
-      loadUserProfile(cred.user),
-      new Promise((_,reject) => setTimeout(()=>reject(new Error('timeout')), 8000))
-    ]);
-    loading.classList.remove('show');
+    const cred = await window._fbSignIn(email, pass);
+    await loadUserProfile(cred.user);
     if(loginBtn) { loginBtn.disabled=false; loginBtn.textContent='Sign In →'; }
     document.getElementById('login-page').style.display='none';
     document.getElementById('app').style.display='block';
     initApp();
   } catch(err) {
-    if(err.message==='timeout') {
-      // Profile load timed out — still log in with minimal profile
-      if(CU) {
-        loading.classList.remove('show');
-        if(loginBtn) { loginBtn.disabled=false; loginBtn.textContent='Sign In →'; }
-        document.getElementById('login-page').style.display='none';
-        document.getElementById('app').style.display='block';
-        initApp();
-        return;
-      }
-    }
-    loading.classList.remove('show');
     if(loginBtn) { loginBtn.disabled=false; loginBtn.textContent='Sign In →'; }
     console.error('[LOGIN ERROR]', err.code, '|', err.message);
     // Show the REAL error code on screen so we can diagnose
@@ -1089,7 +1112,7 @@ async function doLogin() {
 function showErr(msg) { const e=document.getElementById('l-err'); e.style.display='block'; e.textContent=msg; }
 
 async function doLogout() {
-  try { await _auth.signOut(); } catch(e) {}
+  try { await window._fbSignOut(); } catch(e) {}
   CU=null; USERS=[];
   document.getElementById('login-page').style.display='flex';
   document.getElementById('app').style.display='none';
@@ -1105,8 +1128,8 @@ async function doLogout() {
 async function loadUserProfile(fbUser) {
   // Step 1: try to get profile by Firebase UID (the normal case)
   try {
-    const docSnap = await _db.collection('users').doc(fbUser.uid).get();
-    if(docSnap.exists) {
+    const docSnap = await window._fbGetDoc('users', fbUser.uid);
+    if(docSnap.exists()) {
       CU = { id: docSnap.id, ...docSnap.data() };
       if(!CU.email) CU.email = fbUser.email;
       return; // done — fast path
@@ -1122,7 +1145,7 @@ async function loadUserProfile(fbUser) {
     mall:  '–',
   };
   try {
-    await _db.collection('users').doc(fbUser.uid).set({ ...CU, createdAt: _serverTimestamp() });
+    await window._fbSetDoc('users', fbUser.uid, { ...CU, createdAt: _st() });
     console.log('[PROFILE] Created new profile for', fbUser.email);
   } catch(e) {
     console.warn('[PROFILE] Could not save:', e.message);
@@ -1150,18 +1173,18 @@ function initApp() {
   populateUserFilter();
 
   // Firebase real-time listener for logs
-  _db.collection('users').onSnapshot(snap => {
+  window._fbOnSnap('users', snap => {
     USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
     populateUserFilter();
     if(document.getElementById('pg-users').style.display!=='none') renderUsers();
     if(document.getElementById('pg-admin').style.display!=='none') renderAdminTable();
   });
-  window._logUnsub = _db.collection('logs').orderBy('createdAt','desc').onSnapshot(snap => {
+  window._logUnsub = window._fbOnSnap('logs', snap => {
     LOGS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
     renderBoard(); renderStats();
     if(document.getElementById('pg-logs').style.display!=='none') renderLogs();
     updateFbStatus(true);
-  }, err => { updateFbStatus(false); console.error('Logs snapshot error:', err); });
+  }, err => { updateFbStatus(false); console.error('Logs error:', err); }, 'createdAt');
 
   renderNotifs(); showPage('board');
 }
@@ -1317,7 +1340,7 @@ async function loadAdminPanel() {
   tbody.innerHTML = `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--grey-400);font-family:var(--font-display);font-size:13px;">⏳ Loading users…</td></tr>`;
   // Always reload from Firestore when admin panel is opened or refreshed
   try {
-    const snap = await _db.collection('users').get();
+    const snap = await window._fbGetAll('users');
     USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
     populateUserFilter();
   } catch(e) { console.error('Failed to load users:', e); }
@@ -1378,7 +1401,7 @@ async function saveUserRow(userId) {
   if(!mall||mall==='–') { statusEl.textContent='⚠ Select a flagship'; statusEl.className='save-status err'; return; }
   btn.disabled=true; btn.textContent='Saving…'; statusEl.textContent='';
   try {
-    await _db.collection('users').doc(userId).update({ name, role, mall, updatedAt:_serverTimestamp() });
+    await window._fbUpdateDoc('users', userId, { name, role, mall, updatedAt:_st() });
     // Update local cache
     const u=USERS.find(x=>x.id===userId); if(u){u.name=name;u.role=role;u.mall=mall;}
     // If saving self, update sidebar
@@ -1424,8 +1447,8 @@ async function addUserProfile() {
   try {
     // Use email as doc ID placeholder — will be replaced with real UID when they log in
     // Store with a generated ID so admin can pre-configure before first login
-    const newProfile = { email, name, role, mall, createdAt: _serverTimestamp(), preConfigured: true };
-    const docRef = await _db.collection('users').add(newProfile);
+    const newProfile = { email, name, role, mall, createdAt: _st(), preConfigured: true };
+    const docRef = await window._fbAddDoc('users', newProfile);
     showMsg('✓ User profile added successfully! They can now log in.', true);
     // Clear form
     ['nu-email','nu-name'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -1445,7 +1468,7 @@ async function removeUserProfile(userId) {
   if(userId===CU.id) { toast('Cannot remove yourself.','','⚠️'); return; }
   if(!confirm('Remove this user profile from the system?')) return;
   try {
-    await _db.collection('users').doc(userId).delete();
+    await window._fbDeleteDoc('users', userId);
     toast('User removed.','','✅');
   } catch(e) { toast('Error', e.message,'❌'); }
 }
@@ -1505,7 +1528,7 @@ async function submitLog() {
   }
   const code=genCode();
   try {
-    const docRef = await _db.collection('logs').add({ code, subject, issueType:type, status:'Sent', createdBy:CU.id, createdAt:_serverTimestamp(), updatedAt:_serverTimestamp(), details:det, messages:[] });
+    const docRef = await window._fbAddDoc('logs', { code, subject, issueType:type, status:'Sent', createdBy:CU.id, createdAt:_st(), updatedAt:_st(), details:det, messages:[] });
     closeOverlay('o-nl');
     toast('Log Submitted',`${code} sent to IT team.`,'📨');
     addNotif('New Log Submitted',`${code}: ${subject}`,null);
@@ -1601,7 +1624,7 @@ async function updateStatus(lid, newS) {
   const log=LOGS.find(l=>l.id===lid); if(!log) return;
   const old=log.status;
   try {
-    await _db.collection('logs').doc(lid).update({ status:newS, updatedAt:_serverTimestamp() });
+    await window._fbUpdateDoc('logs', lid, { status:newS, updatedAt:_st() });
     toast('Status Updated',`${log.code} → ${newS}`,'✅');
     addNotif('Status Updated',`${log.code}: "${old}" → "${newS}"`,lid);
     const sc=S_CLS[newS]||'sent';
@@ -1633,7 +1656,7 @@ async function sendMsg(lid) {
   const log=LOGS.find(l=>l.id===lid); if(!log) return;
   const msg={ userId:CU.id, text:txt, at:new Date().toISOString(), readBy:[CU.id] };
   try {
-    await _db.collection('logs').doc(lid).update({ messages:_arrayUnion(msg), updatedAt:_serverTimestamp() });
+    await window._fbAppendMsg('logs', lid, msg);
     inp.value=''; document.getElementById('mdd').style.display='none';
     const uico=`<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
     const txtH=txt.replace(/@(\S+)/g,'<span class="chat-mention">@$1</span>');
@@ -1850,43 +1873,25 @@ service cloud.firestore {
    BOOT
 ───────────────────────────────────── */
 // Check Firebase auth state on load
-window.addEventListener('load', ()=>{
+// _bootApp is called by the module script once Firebase is ready
+window._bootApp = function() {
   initEmailJS();
-  // Startup check
-  setTimeout(()=>{
-    console.log('[BOOT] firebase:', typeof firebase, '| _auth:', typeof _auth, '| _db:', typeof _db);
-    _auth.onAuthStateChanged(async user=>{
-      console.log('[AUTH STATE]', user ? 'signed in: '+user.email : 'signed out');
-      if(user && !CU) {
-        try {
-          await Promise.race([
-            loadUserProfile(user),
-            new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000))
-          ]);
-          document.getElementById('login-page').style.display='none';
-          document.getElementById('app').style.display='block';
-          initApp();
-        } catch(e) {
-          if(e.message==='timeout' && CU) {
-            document.getElementById('login-page').style.display='none';
-            document.getElementById('app').style.display='block';
-            initApp();
-          } else {
-            console.error('[AUTO-LOGIN FAILED]', e.message);
-            // Reset button state if visible
-            const btn=document.getElementById('btn-login');
-            if(btn){btn.disabled=false;btn.textContent='Sign In →';}
-            const ld=document.getElementById('login-loading');
-            if(ld)ld.classList.remove('show');
-          }
-        }
-      } else if(!user) {
-        document.getElementById('login-page').style.display='flex';
-        document.getElementById('app').style.display='none';
+  window._onAuthChanged(async user=>{
+    if(user && !CU) {
+      try {
+        await loadUserProfile(user);
+        document.getElementById('login-page').style.display='none';
+        document.getElementById('app').style.display='block';
+        initApp();
+      } catch(e) {
+        console.error('[AUTO-LOGIN FAILED]', e.message);
       }
-    });
-  }, 600);
-});
+    } else if(!user) {
+      document.getElementById('login-page').style.display='flex';
+      document.getElementById('app').style.display='none';
+    }
+  });
+};
 </script>
 </body>
 </html>
