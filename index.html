@@ -715,7 +715,7 @@ input, select, textarea { font-family: inherit; }
 
     <button class="btn-login" id="btn-login" onclick="doLogin()">Sign In →</button>
     <div class="login-err" id="l-err"></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships &nbsp;·&nbsp; <strong style="color:var(--grey-500);">v2.5</strong></div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships &nbsp;·&nbsp; <strong style="color:var(--grey-500);">v2.6</strong></div>
   </div>
 </div>
 
@@ -1745,19 +1745,33 @@ const EJS = {
 };
 
 function initEmailJS() {
-  if(EJS.enabled && EJS.publicKey) {
+  if(!EJS.enabled || !EJS.publicKey) return;
+  // Retry up to 5s waiting for EmailJS CDN to load
+  let tries = 0;
+  const attempt = () => {
     if(typeof emailjs !== 'undefined') {
       emailjs.init({ publicKey: EJS.publicKey });
-      EJS.enabled = true;
+      EJS._ready = true;
+      console.log('[EmailJS] Initialized ✓');
+    } else if(tries++ < 20) {
+      setTimeout(attempt, 250);
+    } else {
+      console.warn('[EmailJS] SDK never loaded — emails disabled');
+      EJS.enabled = false;
     }
-  }
+  };
+  attempt();
 }
 
 async function sendEmail(toUser, updateType, updateDetail, logCode, logSubject) {
-  if(!EJS.enabled || !toUser?.email) return;
+  if(!EJS.enabled || !EJS._ready) {
+    console.warn('[EmailJS] Not ready — skipping email to', toUser?.email);
+    return;
+  }
+  if(!toUser?.email) return;
   if(toUser.id === CU.id) return; // don't email yourself
   try {
-    await emailjs.send(EJS.serviceId, EJS.templateId, {
+    const result = await emailjs.send(EJS.serviceId, EJS.templateId, {
       to_email:      toUser.email,
       to_name:       toUser.name || toUser.email,
       log_code:      logCode,
@@ -1767,9 +1781,10 @@ async function sendEmail(toUser, updateType, updateDetail, logCode, logSubject) 
       updated_by:    CU.name || CU.email,
       app_name:      'ABC Operations and IT Issue Tracker',
     });
-    console.log(`Email sent to ${toUser.email}`);
+    console.log('[EmailJS] Sent to', toUser.email, '— status:', result.status);
   } catch(e) {
-    console.warn('EmailJS error:', e);
+    console.error('[EmailJS] Failed to send to', toUser.email, ':', e.text || e.message || e);
+    toast('Email Error', 'Could not send email to ' + toUser.email + ': ' + (e.text||e.message||'unknown error'), '📧');
   }
 }
 
@@ -1778,19 +1793,16 @@ async function notifyLogEvent(log, updateType, updateDetail) {
   const creator = uid(log.createdBy);
   const itUsers = USERS.filter(u => u.role==='IT' || u.role==='Admin');
   const targets = new Map();
-  // Always notify the creator
   if(creator) targets.set(creator.id, creator);
-  // Always notify IT + Admin
   itUsers.forEach(u => targets.set(u.id, u));
-  // Notify mentioned users from chatter
   const mentions = (updateDetail||'').match(/@(\S+)/g)||[];
   mentions.forEach(m => {
     const name = m.slice(1);
     const u = USERS.find(x=>x.name===name);
     if(u) targets.set(u.id, u);
   });
-  // Remove self
   targets.delete(CU.id);
+  console.log('[EmailJS] Notifying', targets.size, 'user(s) for:', updateType);
   for(const u of targets.values()) {
     await sendEmail(u, updateType, updateDetail, log.code, log.subject);
   }
