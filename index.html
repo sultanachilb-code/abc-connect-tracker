@@ -8,7 +8,7 @@
 <!-- Firebase SDK -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, doc, getDocs, addDoc, updateDoc, onSnapshot, orderBy, query, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, collection, doc, getDocs, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot, orderBy, query, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   // ╔══════════════════════════════════════════════════════╗
@@ -29,7 +29,7 @@
   const auth = getAuth(app);
 
   // Expose to global scope so non-module scripts can use them
-  window.__fb = { db, auth, collection, doc, getDocs, addDoc, updateDoc, onSnapshot, orderBy, query, serverTimestamp, arrayUnion, signInWithEmailAndPassword, signOut, onAuthStateChanged };
+  window.__fb = { db, auth, collection, doc, getDocs, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot, orderBy, query, serverTimestamp, arrayUnion, signInWithEmailAndPassword, signOut, onAuthStateChanged };
 </script>
 
 <!-- Fonts: Outfit (corporate display) + Source Sans 3 (body) -->
@@ -187,6 +187,57 @@ input, select, textarea { font-family: inherit; }
 .login-loading.show { display: flex; }
 .spinner { width: 28px; height: 28px; border: 3px solid var(--blue-200); border-top-color: var(--blue-600); border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+
+/* ══════════════════════════════════════
+   ADMIN PANEL
+══════════════════════════════════════ */
+.admin-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:12px; }
+.admin-header-left h2 { font-family:var(--font-display); font-size:20px; font-weight:800; color:var(--blue-900); letter-spacing:-.3px; }
+.admin-header-left p  { font-size:13px; color:var(--grey-500); margin-top:2px; }
+
+.admin-table-wrap { background:var(--white); border:1px solid var(--grey-200); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow-sm); }
+.admin-tbl { width:100%; border-collapse:collapse; font-size:13.5px; }
+.admin-tbl thead th { background:var(--blue-800); color:rgba(255,255,255,.75); padding:11px 16px; text-align:left; font-family:var(--font-display); font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; font-weight:700; }
+.admin-tbl tbody td { padding:12px 16px; border-bottom:1px solid var(--grey-100); vertical-align:middle; }
+.admin-tbl tbody tr:last-child td { border-bottom:none; }
+.admin-tbl tbody tr:hover td { background:var(--grey-50); }
+.admin-tbl .email-cell { font-family:var(--font-display); font-size:12px; color:var(--blue-600); font-weight:600; }
+.admin-tbl .name-cell { font-weight:600; color:var(--grey-800); }
+.admin-tbl .unassigned { color:var(--grey-400); font-style:italic; font-size:12px; }
+
+.inline-sel {
+  background:var(--grey-50); border:1.5px solid var(--grey-200); border-radius:var(--radius-xs);
+  padding:6px 10px; color:var(--grey-800); font-size:12.5px; outline:none; cursor:pointer;
+  font-family:var(--font-body); transition:border-color .15s; min-width:120px;
+}
+.inline-sel:focus { border-color:var(--blue-400); background:var(--white); }
+.inline-inp {
+  background:var(--grey-50); border:1.5px solid var(--grey-200); border-radius:var(--radius-xs);
+  padding:6px 10px; color:var(--grey-800); font-size:12.5px; outline:none;
+  font-family:var(--font-body); transition:border-color .15s; width:150px;
+}
+.inline-inp:focus { border-color:var(--blue-400); background:var(--white); }
+
+.btn-save-row { background:var(--blue-600); color:var(--white); border:none; border-radius:var(--radius-xs); padding:6px 14px; font-family:var(--font-display); font-weight:700; font-size:12px; cursor:pointer; transition:all .15s; }
+.btn-save-row:hover { background:var(--blue-700); }
+.btn-save-row:disabled { background:var(--grey-300); cursor:not-allowed; }
+.save-status { font-size:11px; font-family:var(--font-display); font-weight:600; margin-left:6px; }
+.save-status.ok   { color:var(--s-solved); }
+.save-status.err  { color:#dc2626; }
+
+.admin-empty { padding:48px 24px; text-align:center; color:var(--grey-400); }
+.admin-empty .ei { font-size:32px; margin-bottom:10px; display:block; }
+.admin-empty p { font-family:var(--font-display); font-size:14px; font-weight:600; }
+.admin-empty small { font-size:12px; margin-top:4px; display:block; }
+
+.invite-box { background:var(--blue-50); border:1.5px dashed var(--blue-300); border-radius:var(--radius); padding:20px 24px; margin-bottom:22px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.invite-box p { font-size:13px; color:var(--blue-800); flex:1; min-width:200px; line-height:1.5; }
+.invite-box p strong { font-family:var(--font-display); font-weight:700; display:block; margin-bottom:3px; }
+
+.user-status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
+.usd-active   { background:var(--s-solved); }
+.usd-pending  { background:var(--s-progress); }
 
 /* ══════════════════════════════════════
    APP SHELL
@@ -651,6 +702,10 @@ input, select, textarea { font-family: inherit; }
           <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
           Users
         </div>
+        <div class="nav-item" onclick="showPage('admin')" id="ni-admin">
+          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Admin Panel
+        </div>
       </nav>
       <div class="sidebar-user">
         <div class="sb-user-icon">
@@ -722,6 +777,41 @@ input, select, textarea { font-family: inherit; }
       <!-- Users -->
       <div class="content" id="pg-users" style="display:none;">
         <div class="users-grid" id="users-grid"></div>
+      </div>
+
+      <!-- Admin Panel -->
+      <div class="content" id="pg-admin" style="display:none;">
+        <div class="admin-header">
+          <div class="admin-header-left">
+            <h2>🛡️ Admin Panel — User Management</h2>
+            <p>Assign roles and flagships to Firebase authenticated users. Changes apply immediately.</p>
+          </div>
+          <button class="btn-primary" onclick="loadAdminPanel()" style="display:flex;align-items:center;gap:6px;">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#fff;stroke-width:2.5;fill:none;stroke-linecap:round;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh Users
+          </button>
+        </div>
+        <div class="invite-box">
+          <svg viewBox="0 0 24 24" style="width:28px;height:28px;stroke:var(--blue-600);stroke-width:1.8;fill:none;flex-shrink:0;stroke-linecap:round;"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.22 1.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 7.09a16 16 0 006 6l.55-.55a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/></svg>
+          <p><strong>How to add a new user</strong>Go to Firebase Console → Authentication → Add user (email + password). They will appear here automatically within seconds. Then assign their name, role and flagship below.</p>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-tbl">
+            <thead>
+              <tr>
+                <th>Firebase Email</th>
+                <th>Display Name</th>
+                <th>Role</th>
+                <th>Flagship</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="admin-tbody">
+              <tr><td colspan="6" class="admin-empty"><span class="ei">⏳</span><p>Loading users…</p></td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -848,16 +938,12 @@ input, select, textarea { font-family: inherit; }
    USERS CONFIG
    Each user must have a matching Firebase Auth email account
 ───────────────────────────────────── */
-const USERS = [
-  { id:'admin', name:'Admin',            role:'Admin', mall:'ABC HQ',           email:'admin@abc.com.lb'       },
-  { id:'it1',   name:'IT – Sultan Test',       role:'IT',    mall:'IT Department',    email:'sultanachi.lb@gmail.com'         },
-  { id:'it2',   name:'IT – Sara',        role:'IT',    mall:'IT Department',    email:'it2@abc.com.lb'         },
-  { id:'vrd',   name:'ABC Verdun',       role:'User',  mall:'Verdun Mall',      email:'salaachi@abc.com.lb'    },
-  { id:'ach',   name:'ABC Achrafieh',    role:'User',  mall:'Achrafieh Mall',   email:'achrafieh@abc.com.lb'   },
-  { id:'dby',   name:'ABC Dbayeh',       role:'User',  mall:'Dbayeh',           email:'dbayeh@abc.com.lb'      },
-  { id:'vds',   name:'Verdun DS',        role:'User',  mall:'Verdun DS',        email:'verdunds@abc.com.lb'    },
-  { id:'ads',   name:'Achrafieh DS',     role:'User',  mall:'Achrafieh DS',     email:'achrafiehds@abc.com.lb' },
-];
+// USERS is now dynamic — loaded from Firestore 'users' collection
+// Structure: { id (Firebase UID), email, name, role, mall, createdAt }
+let USERS = [];
+
+const FLAGSHIPS = ['ABC HQ','IT Department','Verdun Mall','Achrafieh Mall','Dbayeh','Verdun DS','Achrafieh DS'];
+const ROLES     = ['Admin','IT','User'];
 
 const STATUSES   = ['Sent','In Progress','Solved','Need Enhancement','Not a Portal Issue'];
 const S_CLS      = { 'Sent':'sent','In Progress':'progress','Solved':'solved','Need Enhancement':'enhance','Not a Portal Issue':'notportal' };
@@ -869,8 +955,9 @@ let LOGS = [];       // cached from Firestore
 let NOTIFS = JSON.parse(localStorage.getItem('abc_notifs')||'[]');
 let LC   = parseInt(localStorage.getItem('abc_lc')||'0');
 
-function uid(id) { return USERS.find(x=>x.id===id)||null; }
-function uByEmail(email) { return USERS.find(x=>x.email===email)||null; }
+function uid(id)      { return USERS.find(x=>x.id===id)||null; }
+function uByEmail(e)  { return USERS.find(x=>x.email?.toLowerCase()===e?.toLowerCase())||null; }
+function uByUid(uid)  { return USERS.find(x=>x.uid===uid)||null; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmtDt(ts) {
   if(!ts) return '–';
@@ -902,9 +989,9 @@ async function doLogin() {
   try {
     const fb = window.__fb;
     if(!fb) throw new Error('Firebase not configured.');
-    await fb.signInWithEmailAndPassword(fb.auth, email, pass);
-    const usr = USERS.find(x=>x.email.toLowerCase()===email.toLowerCase());
-    CU = usr || { id:'unknown', name:email.split('@')[0], role:'User', mall:'–', email };
+    const cred = await fb.signInWithEmailAndPassword(fb.auth, email, pass);
+    // Load user profile from Firestore
+    await loadUserProfile(cred.user);
     loading.classList.remove('show');
     document.getElementById('login-page').style.display='none';
     document.getElementById('app').style.display='block';
@@ -923,7 +1010,7 @@ function showErr(msg) { const e=document.getElementById('l-err'); e.style.displa
 
 async function doLogout() {
   try { if(window.__fb) await window.__fb.signOut(window.__fb.auth); } catch(e) {}
-  CU=null;
+  CU=null; USERS=[];
   document.getElementById('login-page').style.display='flex';
   document.getElementById('app').style.display='none';
   document.getElementById('l-email').value='';
@@ -935,19 +1022,56 @@ async function doLogout() {
 /* ─────────────────────────────────────
    INIT
 ───────────────────────────────────── */
+async function loadUserProfile(fbUser) {
+  const fb = window.__fb;
+  // Try to load profile from Firestore users collection
+  try {
+    const snap = await fb.getDocs(fb.collection(fb.db,'users'));
+    USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  } catch(e) { USERS = []; }
+  // Find current user by email
+  const profile = uByEmail(fbUser.email);
+  if(profile) {
+    CU = profile;
+  } else {
+    // First time — create a pending profile in Firestore
+    const isFirst = USERS.length === 0;
+    CU = {
+      id: fbUser.uid,
+      uid: fbUser.uid,
+      email: fbUser.email,
+      name: fbUser.email.split('@')[0],
+      role: isFirst ? 'Admin' : 'User',  // first user ever = Admin
+      mall: isFirst ? 'ABC HQ' : '–',
+    };
+    // Save to Firestore
+    try {
+      await fb.setDoc(fb.doc(fb.db,'users',fbUser.uid), { ...CU, createdAt: fb.serverTimestamp() });
+      USERS.push(CU);
+    } catch(e) { console.error('Could not save user profile', e); }
+  }
+}
+
 function initApp() {
-  document.getElementById('sb-name').textContent = CU.name;
-  document.getElementById('sb-role').textContent = CU.role + ' · ' + CU.mall;
-  document.getElementById('ni-users').style.display = CU.role!=='User' ? 'flex':'none';
+  document.getElementById('sb-name').textContent = CU.name || CU.email;
+  document.getElementById('sb-role').textContent = CU.role + ' · ' + (CU.mall||'–');
+  const isPrivileged = CU.role==='Admin' || CU.role==='IT';
+  document.getElementById('ni-users').style.display  = isPrivileged ? 'flex':'none';
+  document.getElementById('ni-admin').style.display  = CU.role==='Admin' ? 'flex':'none';
 
-  // Populate user filter
-  const fu = document.getElementById('flt-user');
-  fu.innerHTML='<option value="">All Users</option>';
-  USERS.forEach(x=>{ const o=document.createElement('option'); o.value=x.id; o.textContent=x.name; fu.appendChild(o); });
+  // Populate user filter from loaded USERS
+  populateUserFilter();
 
-  // Firebase real-time listener
+  // Firebase real-time listener for logs
   const fb = window.__fb;
   if(fb) {
+    // Also live-listen to users collection
+    fb.onSnapshot(fb.collection(fb.db,'users'), snap => {
+      USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      populateUserFilter();
+      if(document.getElementById('pg-users').style.display!=='none') renderUsers();
+      if(document.getElementById('pg-admin').style.display!=='none') renderAdminTable();
+    });
     const q = fb.query(fb.collection(fb.db,'logs'), fb.orderBy('createdAt','desc'));
     window._logUnsub = fb.onSnapshot(q, snap => {
       LOGS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
@@ -960,6 +1084,13 @@ function initApp() {
   renderNotifs(); showPage('board');
 }
 
+function populateUserFilter() {
+  const fu = document.getElementById('flt-user');
+  if(!fu) return;
+  fu.innerHTML='<option value="">All Users</option>';
+  USERS.forEach(x=>{ const o=document.createElement('option'); o.value=x.id; o.textContent=x.name||x.email; fu.appendChild(o); });
+}
+
 function updateFbStatus(ok) {
   document.getElementById('fb-dot').className = 'fb-dot' + (ok?'':' offline');
   document.getElementById('fb-status-txt').textContent = ok ? 'Live — Firebase Firestore connected' : 'Connecting…';
@@ -969,12 +1100,13 @@ function updateFbStatus(ok) {
    PAGES
 ───────────────────────────────────── */
 function showPage(p) {
-  ['board','logs','users'].forEach(pg => document.getElementById('pg-'+pg).style.display = pg===p?'block':'none');
-  ['board','logs','users'].forEach(pg => document.getElementById('ni-'+pg)?.classList.toggle('active', pg===p));
-  document.getElementById('page-title').textContent = { board:'Issue Board', logs:'All Logs', users:'User Management' }[p];
+  ['board','logs','users','admin'].forEach(pg => document.getElementById('pg-'+pg).style.display = pg===p?'block':'none');
+  ['board','logs','users','admin'].forEach(pg => document.getElementById('ni-'+pg)?.classList.toggle('active', pg===p));
+  document.getElementById('page-title').textContent = { board:'Issue Board', logs:'All Logs', users:'User Directory', admin:'Admin Panel' }[p];
   if(p==='logs')  renderLogs();
   if(p==='users') renderUsers();
   if(p==='board') renderBoard();
+  if(p==='admin') loadAdminPanel();
 }
 
 /* ─────────────────────────────────────
@@ -1064,23 +1196,102 @@ function renderLogs() {
 }
 
 /* ─────────────────────────────────────
-   USERS
+   USERS DIRECTORY
 ───────────────────────────────────── */
 function renderUsers() {
   const rp={Admin:'rp-admin Admin',IT:'rp-it IT Team',User:'rp-user Mall User'};
   const uico=`<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
-  document.getElementById('users-grid').innerHTML=USERS.map(x=>{
-    const [rc,...rt]=rp[x.role].split(' ');
-    return `<div class="ucard">
-      <div class="ucard-ico">${uico}</div>
-      <div>
-        <div class="ucard-name">${x.name}</div>
-        <div class="ucard-mall">${x.mall}</div>
-        <div class="ucard-email">${x.email}</div>
-        <span class="role-pill ${rc}">${rt.join(' ')}</span>
-      </div>
-    </div>`;
+  const assigned = USERS.filter(x=>x.name && x.mall && x.mall!=='–');
+  document.getElementById('users-grid').innerHTML= assigned.length===0
+    ? `<div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--grey-400);"><div style="font-size:32px;margin-bottom:10px;">👥</div><div style="font-family:var(--font-display);font-size:14px;font-weight:600;">No users assigned yet</div><div style="font-size:12px;margin-top:4px;">Use the Admin Panel to assign roles and flagships.</div></div>`
+    : assigned.map(x=>{
+        const rk=(rp[x.role]||'rp-user Mall User').split(' ');
+        const rc=rk[0], rl=rk.slice(1).join(' ');
+        return `<div class="ucard">
+          <div class="ucard-ico">${uico}</div>
+          <div>
+            <div class="ucard-name">${esc(x.name||x.email)}</div>
+            <div class="ucard-mall">${esc(x.mall||'–')}</div>
+            <div class="ucard-email">${esc(x.email||'')}</div>
+            <span class="role-pill ${rc}">${rl}</span>
+          </div>
+        </div>`;
+      }).join('');
+}
+
+/* ─────────────────────────────────────
+   ADMIN PANEL
+───────────────────────────────────── */
+async function loadAdminPanel() {
+  const tbody = document.getElementById('admin-tbody');
+  tbody.innerHTML = `<tr><td colspan="6" style="padding:32px;text-align:center;color:var(--grey-400);font-family:var(--font-display);font-size:13px;">⏳ Loading Firebase users…</td></tr>`;
+  renderAdminTable();
+}
+
+function renderAdminTable() {
+  if(CU.role!=='Admin') return;
+  const tbody = document.getElementById('admin-tbody');
+  if(!tbody) return;
+  if(USERS.length===0) {
+    tbody.innerHTML=`<tr><td colspan="6"><div class="admin-empty"><span class="ei">👤</span><p>No users found in Firestore</p><small>Log in with any email to auto-create their profile, then assign their role here.</small></div></td></tr>`;
+    return;
+  }
+  const flagOpts = FLAGSHIPS.map(f=>`<option value="${f}">${f}</option>`).join('');
+  const roleOpts = ROLES.map(r=>`<option value="${r}">${r}</option>`).join('');
+  tbody.innerHTML = USERS.map(u => {
+    const isMe = u.id===CU.id;
+    return `<tr id="arow-${u.id}">
+      <td class="email-cell">${esc(u.email||'–')}</td>
+      <td><input class="inline-inp" id="aname-${u.id}" value="${esc(u.name||'')}" placeholder="Display Name" ${isMe?'style="border-color:var(--blue-300);"':''}></td>
+      <td>
+        <select class="inline-sel" id="arole-${u.id}" ${isMe?'disabled title="Cannot change your own role"':''}>
+          ${ROLES.map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${r}</option>`).join('')}
+        </select>
+      </td>
+      <td>
+        <select class="inline-sel" id="amall-${u.id}">
+          <option value="–" ${(!u.mall||u.mall==='–')?'selected':''}>— Select Flagship —</option>
+          ${FLAGSHIPS.map(f=>`<option value="${f}" ${f===u.mall?'selected':''}>${f}</option>`).join('')}
+        </select>
+      </td>
+      <td>
+        ${u.name && u.mall && u.mall!=='–'
+          ? `<span class="user-status-dot usd-active"></span><span style="font-size:12px;color:var(--s-solved);font-weight:600;">Active</span>`
+          : `<span class="user-status-dot usd-pending"></span><span style="font-size:12px;color:var(--s-progress);font-weight:600;">Pending Setup</span>`}
+      </td>
+      <td style="white-space:nowrap;">
+        <button class="btn-save-row" onclick="saveUserRow('${u.id}')">Save</button>
+        <span class="save-status" id="astatus-${u.id}"></span>
+      </td>
+    </tr>`;
   }).join('');
+}
+
+async function saveUserRow(userId) {
+  const btn   = document.querySelector(`#arow-${userId} .btn-save-row`);
+  const statusEl = document.getElementById(`astatus-${userId}`);
+  const name  = document.getElementById(`aname-${userId}`)?.value?.trim();
+  const role  = document.getElementById(`arole-${userId}`)?.value;
+  const mall  = document.getElementById(`amall-${userId}`)?.value;
+  if(!name)  { statusEl.textContent='⚠ Name required'; statusEl.className='save-status err'; return; }
+  if(!mall||mall==='–') { statusEl.textContent='⚠ Select a flagship'; statusEl.className='save-status err'; return; }
+  btn.disabled=true; btn.textContent='Saving…'; statusEl.textContent='';
+  const fb=window.__fb;
+  try {
+    await fb.updateDoc(fb.doc(fb.db,'users',userId),{ name, role, mall, updatedAt:fb.serverTimestamp() });
+    // Update local cache
+    const u=USERS.find(x=>x.id===userId); if(u){u.name=name;u.role=role;u.mall=mall;}
+    // If saving self, update sidebar
+    if(userId===CU.id){CU.name=name;CU.role=role;CU.mall=mall;document.getElementById('sb-name').textContent=name;document.getElementById('sb-role').textContent=role+' · '+mall;}
+    btn.textContent='Save'; btn.disabled=false;
+    statusEl.textContent='✓ Saved'; statusEl.className='save-status ok';
+    setTimeout(()=>statusEl.textContent='',3000);
+    toast('User Updated',`${name} — ${role} at ${mall}`,'✅');
+  } catch(e) {
+    btn.textContent='Save'; btn.disabled=false;
+    statusEl.textContent='✗ Error'; statusEl.className='save-status err';
+    toast('Error',e.message,'❌');
+  }
 }
 
 /* ─────────────────────────────────────
@@ -1337,10 +1548,18 @@ window.addEventListener('load', ()=>{
   setTimeout(()=>{
     const fb=window.__fb;
     if(!fb) { updateFbStatus&&updateFbStatus(false); return; }
-    fb.onAuthStateChanged(fb.auth, user=>{
+    fb.onAuthStateChanged(fb.auth, async user=>{
       if(user && !CU) {
-        const u=uByEmail(user.email);
-        if(u) { CU=u; document.getElementById('login-page').style.display='none'; document.getElementById('app').style.display='block'; initApp(); }
+        try {
+          await loadUserProfile(user);
+          document.getElementById('login-page').style.display='none';
+          document.getElementById('app').style.display='block';
+          initApp();
+        } catch(e) { console.error('Auto-login failed',e); }
+      } else if(!user) {
+        // signed out
+        document.getElementById('login-page').style.display='flex';
+        document.getElementById('app').style.display='none';
       }
     });
   },500);
