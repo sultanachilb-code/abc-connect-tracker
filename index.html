@@ -673,7 +673,7 @@ input, select, textarea { font-family: inherit; }
 
     <button class="btn-login" id="btn-login" onclick="doLogin()">Sign In →</button>
     <div class="login-err" id="l-err"></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships &nbsp;·&nbsp; <strong style="color:var(--grey-500);">v2.0</strong></div>
   </div>
 </div>
 
@@ -1043,19 +1043,30 @@ async function doLogin() {
   const loginBtn = document.getElementById('btn-login');
   if(loginBtn) { loginBtn.disabled=true; loginBtn.textContent='Signing in…'; }
 
-  console.log('[LOGIN] Attempting:', email);
-  console.log('[LOGIN] _auth ready:', typeof _auth);
-
   try {
     const cred = await _auth.signInWithEmailAndPassword(email, pass);
-    console.log('[LOGIN] Success:', cred.user.uid);
-    await loadUserProfile(cred.user);
+    // Race: profile load vs 8s timeout
+    await Promise.race([
+      loadUserProfile(cred.user),
+      new Promise((_,reject) => setTimeout(()=>reject(new Error('timeout')), 8000))
+    ]);
     loading.classList.remove('show');
     if(loginBtn) { loginBtn.disabled=false; loginBtn.textContent='Sign In →'; }
     document.getElementById('login-page').style.display='none';
     document.getElementById('app').style.display='block';
     initApp();
   } catch(err) {
+    if(err.message==='timeout') {
+      // Profile load timed out — still log in with minimal profile
+      if(CU) {
+        loading.classList.remove('show');
+        if(loginBtn) { loginBtn.disabled=false; loginBtn.textContent='Sign In →'; }
+        document.getElementById('login-page').style.display='none';
+        document.getElementById('app').style.display='block';
+        initApp();
+        return;
+      }
+    }
     loading.classList.remove('show');
     if(loginBtn) { loginBtn.disabled=false; loginBtn.textContent='Sign In →'; }
     console.error('[LOGIN ERROR]', err.code, '|', err.message);
@@ -1092,43 +1103,31 @@ async function doLogout() {
    INIT
 ───────────────────────────────────── */
 async function loadUserProfile(fbUser) {
-  // Fast: fetch only this user's doc by UID (instant)
+  // Step 1: try to get profile by Firebase UID (the normal case)
   try {
     const docSnap = await _db.collection('users').doc(fbUser.uid).get();
     if(docSnap.exists) {
       CU = { id: docSnap.id, ...docSnap.data() };
-      // Also try to match by email in case profile was pre-created by admin (different doc ID)
       if(!CU.email) CU.email = fbUser.email;
-      return;
+      return; // done — fast path
     }
-  } catch(e) { console.warn('Profile fetch:', e.message); }
+  } catch(e) { console.warn('[PROFILE] UID lookup failed:', e.message); }
 
-  // Check if admin pre-created this user by email (doc ID will differ from UID)
-  try {
-    const byEmail = await _db.collection('users').where('email','==',fbUser.email).get();
-    if(!byEmail.empty) {
-      const d = byEmail.docs[0];
-      CU = { id: d.id, ...d.data() };
-      // Migrate: save under real UID and remove old doc
-      await _db.collection('users').doc(fbUser.uid).set({ ...CU, id: fbUser.uid, updatedAt: _serverTimestamp() });
-      if(d.id !== fbUser.uid) { try { await _db.collection('users').doc(d.id).delete(); } catch(e){} }
-      CU.id = fbUser.uid;
-      return;
-    }
-  } catch(e) { console.warn('Email lookup:', e.message); }
-
-  // Brand new user — create pending profile
-  const countSnap = await _db.collection('users').get().catch(()=>({empty:false}));
+  // Step 2: not found by UID — create a new pending profile instantly (no extra queries)
   CU = {
     id:    fbUser.uid,
     email: fbUser.email,
     name:  fbUser.email.split('@')[0],
-    role:  countSnap.empty ? 'Admin' : 'User',
-    mall:  countSnap.empty ? 'ABC HQ' : '–',
+    role:  'User',
+    mall:  '–',
   };
   try {
     await _db.collection('users').doc(fbUser.uid).set({ ...CU, createdAt: _serverTimestamp() });
-  } catch(e) { console.warn('Could not create profile:', e.message); }
+    console.log('[PROFILE] Created new profile for', fbUser.email);
+  } catch(e) {
+    console.warn('[PROFILE] Could not save:', e.message);
+    // Login still succeeds — user gets a temporary session
+  }
 }
 
 function initApp() {
@@ -1860,11 +1859,27 @@ window.addEventListener('load', ()=>{
       console.log('[AUTH STATE]', user ? 'signed in: '+user.email : 'signed out');
       if(user && !CU) {
         try {
-          await loadUserProfile(user);
+          await Promise.race([
+            loadUserProfile(user),
+            new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000))
+          ]);
           document.getElementById('login-page').style.display='none';
           document.getElementById('app').style.display='block';
           initApp();
-        } catch(e) { console.error('[AUTO-LOGIN FAILED]', e.code, e.message); }
+        } catch(e) {
+          if(e.message==='timeout' && CU) {
+            document.getElementById('login-page').style.display='none';
+            document.getElementById('app').style.display='block';
+            initApp();
+          } else {
+            console.error('[AUTO-LOGIN FAILED]', e.message);
+            // Reset button state if visible
+            const btn=document.getElementById('btn-login');
+            if(btn){btn.disabled=false;btn.textContent='Sign In →';}
+            const ld=document.getElementById('login-loading');
+            if(ld)ld.classList.remove('show');
+          }
+        }
       } else if(!user) {
         document.getElementById('login-page').style.display='flex';
         document.getElementById('app').style.display='none';
