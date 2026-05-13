@@ -1529,15 +1529,13 @@ async function updateStatus(lid, newS) {
   const log=LOGS.find(l=>l.id===lid); if(!log) return;
   const old=log.status;
   try {
-      await _db.collection('logs').doc(lid).update({ status:newS, updatedAt:_serverTimestamp() });
-      toast('Status Updated',`${log.code} → ${newS}`,'✅');
-      addNotif('Status Updated',`${log.code}: "${old}" → "${newS}"`,lid);
-      const sc=S_CLS[newS]||'sent';
-      document.getElementById('det-sub').innerHTML=`<span class="sbadge sb-${sc}">${newS}</span> &nbsp; ${log.code} · ${fmtDt(log.createdAt)}`;
-      // Email creator + all relevant users
-      notifyLogEvent(log, 'Status Updated', `Status changed from "${old}" to "${newS}"`);
-    } catch(e) { toast('Error',e.message,'❌'); }
-  } else { log.status=newS; renderBoard(); renderStats(); toast('Updated (local)',`${log.code} → ${newS}`,'✅'); }
+    await _db.collection('logs').doc(lid).update({ status:newS, updatedAt:_serverTimestamp() });
+    toast('Status Updated',`${log.code} → ${newS}`,'✅');
+    addNotif('Status Updated',`${log.code}: "${old}" → "${newS}"`,lid);
+    const sc=S_CLS[newS]||'sent';
+    document.getElementById('det-sub').innerHTML=`<span class="sbadge sb-${sc}">${newS}</span> &nbsp; ${log.code} · ${fmtDt(log.createdAt)}`;
+    notifyLogEvent(log, 'Status Updated', `Status changed from "${old}" to "${newS}"`);
+  } catch(e) { toast('Error',e.message,'❌'); }
 }
 
 /* ─────────────────────────────────────
@@ -1563,19 +1561,17 @@ async function sendMsg(lid) {
   const log=LOGS.find(l=>l.id===lid); if(!log) return;
   const msg={ userId:CU.id, text:txt, at:new Date().toISOString(), readBy:[CU.id] };
   try {
-      await _db.collection('logs').doc(lid).update({ messages:_arrayUnion(msg), updatedAt:_serverTimestamp() });
-      inp.value=''; document.getElementById('mdd').style.display='none';
-      const uico=`<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
-      const txtH=txt.replace(/@(\S+)/g,'<span class="chat-mention">@$1</span>');
-      const c=document.getElementById('chat-msgs');
-      c.innerHTML+=`<div class="chat-msg"><div class="chat-av">${uico}</div><div class="chat-bubble"><div class="chat-meta"><strong>${CU.name}</strong> · ${fmtDt(new Date().toISOString())}</div><div class="chat-text">${txtH}</div></div></div>`;
-      c.scrollTop=c.scrollHeight;
-      USERS.filter(x=>txt.includes('@'+x.name)&&x.id!==CU.id).forEach(x=>addNotif('Mention',`${CU.name} mentioned you in ${log.code}`,lid));
-      addNotif('Log Updated',`New message on ${log.code}`,lid);
-      // Email notification for chatter
-      notifyLogEvent(log, 'New Chatter Message', txt);
-    } catch(e){ toast('Error',e.message,'❌'); }
-  }
+    await _db.collection('logs').doc(lid).update({ messages:_arrayUnion(msg), updatedAt:_serverTimestamp() });
+    inp.value=''; document.getElementById('mdd').style.display='none';
+    const uico=`<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+    const txtH=txt.replace(/@(\S+)/g,'<span class="chat-mention">@$1</span>');
+    const c=document.getElementById('chat-msgs');
+    c.innerHTML+=`<div class="chat-msg"><div class="chat-av">${uico}</div><div class="chat-bubble"><div class="chat-meta"><strong>${CU.name}</strong> · ${fmtDt(new Date().toISOString())}</div><div class="chat-text">${txtH}</div></div></div>`;
+    c.scrollTop=c.scrollHeight;
+    USERS.filter(x=>txt.includes('@'+x.name)&&x.id!==CU.id).forEach(x=>addNotif('Mention',`${CU.name} mentioned you in ${log.code}`,lid));
+    addNotif('Log Updated',`New message on ${log.code}`,lid);
+    notifyLogEvent(log, 'New Chatter Message', txt);
+  } catch(e){ toast('Error',e.message,'❌'); }
 }
 
 /* ─────────────────────────────────────
@@ -1725,8 +1721,7 @@ function exportExcel() {
     ].join(',');
   });
 
-  const csv = [headers.join(','), ...rows].join('
-');
+  const csv = [headers.join(','), ...rows].join('\n');
   const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
