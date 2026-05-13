@@ -1056,8 +1056,17 @@ function initApp() {
   document.getElementById('sb-name').textContent = CU.name || CU.email;
   document.getElementById('sb-role').textContent = CU.role + ' · ' + (CU.mall||'–');
   const isPrivileged = CU.role==='Admin' || CU.role==='IT';
+  // ── Navigation visibility by role ──
   document.getElementById('ni-users').style.display  = isPrivileged ? 'flex':'none';
   document.getElementById('ni-admin').style.display  = CU.role==='Admin' ? 'flex':'none';
+  // ── Hide New Log button for pending/unassigned users ──
+  const isPending = !CU.mall || CU.mall==='–';
+  const nlBtn = document.getElementById('btn-nl');
+  if(nlBtn) nlBtn.style.display = isPending ? 'none' : 'flex';
+  // ── Show pending warning if not yet set up ──
+  if(isPending && CU.role!=='Admin') {
+    setTimeout(()=>toast('Profile Pending','Your account is not fully set up yet. Please contact your Admin.','⏳'), 800);
+  }
 
   // Populate user filter from loaded USERS
   populateUserFilter();
@@ -1100,6 +1109,10 @@ function updateFbStatus(ok) {
    PAGES
 ───────────────────────────────────── */
 function showPage(p) {
+  // ── ACCESS CONTROL: only Admin can reach admin page ──
+  if(p==='admin' && CU?.role!=='Admin') { toast('Access Denied','Only Admins can access this panel.','🚫'); return; }
+  // IT and above can see users directory
+  if(p==='users' && CU?.role==='User') { toast('Access Denied','You do not have permission to view this page.','🚫'); return; }
   ['board','logs','users','admin'].forEach(pg => document.getElementById('pg-'+pg).style.display = pg===p?'block':'none');
   ['board','logs','users','admin'].forEach(pg => document.getElementById('ni-'+pg)?.classList.toggle('active', pg===p));
   document.getElementById('page-title').textContent = { board:'Issue Board', logs:'All Logs', users:'User Directory', admin:'Admin Panel' }[p];
@@ -1223,13 +1236,18 @@ function renderUsers() {
    ADMIN PANEL
 ───────────────────────────────────── */
 async function loadAdminPanel() {
+  // Double-check role at runtime
+  if(CU?.role!=='Admin') {
+    document.getElementById('admin-tbody').innerHTML=`<tr><td colspan="6" style="padding:40px;text-align:center;color:#dc2626;font-family:var(--font-display);font-weight:700;font-size:14px;">🚫 Access Denied — Admin only</td></tr>`;
+    return;
+  }
   const tbody = document.getElementById('admin-tbody');
-  tbody.innerHTML = `<tr><td colspan="6" style="padding:32px;text-align:center;color:var(--grey-400);font-family:var(--font-display);font-size:13px;">⏳ Loading Firebase users…</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="6" style="padding:32px;text-align:center;color:var(--grey-400);font-family:var(--font-display);font-size:13px;">⏳ Loading users…</td></tr>`;
   renderAdminTable();
 }
 
 function renderAdminTable() {
-  if(CU.role!=='Admin') return;
+  if(!CU || CU.role!=='Admin') return; // silently block
   const tbody = document.getElementById('admin-tbody');
   if(!tbody) return;
   if(USERS.length===0) {
@@ -1268,6 +1286,8 @@ function renderAdminTable() {
 }
 
 async function saveUserRow(userId) {
+  // ── HARD GUARD: must be Admin at call time ──
+  if(!CU || CU.role!=='Admin') { toast('Access Denied','Only Admins can edit user profiles.','🚫'); return; }
   const btn   = document.querySelector(`#arow-${userId} .btn-save-row`);
   const statusEl = document.getElementById(`astatus-${userId}`);
   const name  = document.getElementById(`aname-${userId}`)?.value?.trim();
@@ -1539,6 +1559,47 @@ function toast(title,body,icon='ℹ️') {
   c.appendChild(t);
   setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateX(40px)'; t.style.transition='all .3s'; setTimeout(()=>t.remove(),300); },4500);
 }
+
+
+/* ══════════════════════════════════════════════════════════════
+   FIRESTORE SECURITY RULES  (paste in Firebase Console → Rules)
+   This enforces Admin-only writes on the users collection
+   at the DATABASE level — independent of the frontend code.
+══════════════════════════════════════════════════════════════
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: is the caller an Admin?
+    function isAdmin() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
+    }
+
+    // LOGS — any authenticated user can read/write their own logs
+    match /logs/{logId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if isAdmin();
+    }
+
+    // USERS — any authenticated user can read profiles
+    //         only Admin can write/update profiles
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      // Allow first-time self-registration (creating own profile on first login)
+      allow create: if request.auth != null && request.auth.uid == userId;
+      // Updates: only Admin OR user updating their own basic info (name only)
+      allow update: if isAdmin()
+                    || (request.auth.uid == userId
+                        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role','mall']));
+      allow delete: if isAdmin();
+    }
+  }
+}
+
+══════════════════════════════════════════════════════════════ */
 
 /* ─────────────────────────────────────
    BOOT
