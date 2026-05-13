@@ -676,7 +676,7 @@ input, select, textarea { font-family: inherit; }
       <input class="field-inp" type="password" id="l-pass" placeholder="Enter your password" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
 
-    <button class="btn-login" onclick="doLogin()">Sign In →</button>
+    <button class="btn-login" id="btn-login" onclick="doLogin()">Sign In →</button>
     <div class="login-err" id="l-err"></div>
     <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships</div>
   </div>
@@ -1037,26 +1037,41 @@ async function doLogin() {
   if(!email) { showErr('Please enter your email address.'); return; }
   if(!pass)  { showErr('Please enter your password.'); return; }
 
+  // Wait up to 3s for Firebase module to load
+  let attempts = 0;
+  while(!window.__fb && attempts < 30) { await new Promise(r=>setTimeout(r,100)); attempts++; }
+
   const loading = document.getElementById('login-loading');
   loading.classList.add('show');
   document.getElementById('l-err').style.display='none';
+  const loginBtn = document.getElementById('btn-login');
+  if(loginBtn) { loginBtn.disabled=true; loginBtn.textContent='Signing in…'; }
 
   try {
     const fb = window.__fb;
-    if(!fb) throw new Error('Firebase not configured.');
+    if(!fb) throw new Error('Firebase not ready. Please refresh the page.');
     const cred = await fb.signInWithEmailAndPassword(fb.auth, email, pass);
     // Load user profile from Firestore
     await loadUserProfile(cred.user);
     loading.classList.remove('show');
+    if(loginBtn) { loginBtn.disabled=false; loginBtn.textContent='Sign In →'; }
     document.getElementById('login-page').style.display='none';
     document.getElementById('app').style.display='block';
     initApp();
   } catch(err) {
     loading.classList.remove('show');
+    if(loginBtn) { loginBtn.disabled=false; loginBtn.textContent='Sign In →'; }
+    console.error('Login error:', err.code, err.message);
     let msg = 'Incorrect email or password. Please try again.';
-    if(err.code==='auth/too-many-requests') msg = 'Too many attempts. Please wait a moment and try again.';
-    if(err.code==='auth/invalid-api-key'||err.message?.includes('YOUR_API_KEY')) msg = 'System configuration error. Please contact IT.';
-    if(err.code==='auth/network-request-failed') msg = 'Network error. Check your connection and try again.';
+    if(err.code==='auth/invalid-email')           msg = 'Invalid email format. Please check and try again.';
+    if(err.code==='auth/user-not-found')           msg = 'No account found with this email. Check with your Admin.';
+    if(err.code==='auth/wrong-password')           msg = 'Incorrect password. Please try again.';
+    if(err.code==='auth/invalid-credential')       msg = 'Incorrect email or password. Please try again.';
+    if(err.code==='auth/user-disabled')            msg = 'This account has been disabled. Contact your Admin.';
+    if(err.code==='auth/too-many-requests')        msg = 'Too many failed attempts. Please wait a few minutes.';
+    if(err.code==='auth/network-request-failed')   msg = 'Network error. Check your internet connection.';
+    if(err.code==='auth/api-key-not-valid')        msg = 'Firebase config error. Please contact IT.';
+    if(!window.__fb)                               msg = 'App not ready yet. Please wait 2 seconds and try again.';
     showErr(msg);
   }
 }
@@ -1099,11 +1114,14 @@ async function loadUserProfile(fbUser) {
       role: isFirst ? 'Admin' : 'User',  // first user ever = Admin
       mall: isFirst ? 'ABC HQ' : '–',
     };
-    // Save to Firestore
+    // Save to Firestore (non-blocking — login succeeds even if this fails)
     try {
       await fb.setDoc(fb.doc(fb.db,'users',fbUser.uid), { ...CU, createdAt: fb.serverTimestamp() });
       USERS.push(CU);
-    } catch(e) { console.error('Could not save user profile', e); }
+    } catch(e) {
+      console.warn('Could not save user profile to Firestore:', e.code, e.message);
+      // Still allow login — user will show as pending
+    }
   }
 }
 
