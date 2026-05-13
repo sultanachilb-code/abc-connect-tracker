@@ -715,7 +715,7 @@ input, select, textarea { font-family: inherit; }
 
     <button class="btn-login" id="btn-login" onclick="doLogin()">Sign In →</button>
     <div class="login-err" id="l-err"></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships &nbsp;·&nbsp; <strong style="color:var(--grey-500);">v2.3</strong></div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships &nbsp;·&nbsp; <strong style="color:var(--grey-500);">v2.4</strong></div>
   </div>
 </div>
 
@@ -1126,30 +1126,29 @@ async function doLogout() {
    INIT
 ───────────────────────────────────── */
 async function loadUserProfile(fbUser) {
-  // Step 1: try to get profile by Firebase UID (the normal case)
+  console.log('[PROFILE] Loading for UID:', fbUser.uid, 'email:', fbUser.email);
   try {
     const docSnap = await window._fbGetDoc('users', fbUser.uid);
+    console.log('[PROFILE] Doc exists:', docSnap.exists(), 'data:', docSnap.exists() ? JSON.stringify(docSnap.data()) : 'none');
     if(docSnap.exists()) {
       CU = { id: docSnap.id, ...docSnap.data() };
       if(!CU.email) CU.email = fbUser.email;
-      return; // done — fast path
+      console.log('[PROFILE] CU set:', CU.role, CU.mall);
+      return;
     }
-  } catch(e) { console.warn('[PROFILE] UID lookup failed:', e.message); }
-
-  // Step 2: not found by UID — create a new pending profile instantly (no extra queries)
-  CU = {
-    id:    fbUser.uid,
-    email: fbUser.email,
-    name:  fbUser.email.split('@')[0],
-    role:  'User',
-    mall:  '–',
-  };
-  try {
+    // Doc not found — first time login, create pending profile
+    console.log('[PROFILE] No doc found, creating pending profile');
+    CU = { id: fbUser.uid, email: fbUser.email, name: fbUser.email.split('@')[0], role: 'User', mall: '–' };
     await window._fbSetDoc('users', fbUser.uid, { ...CU, createdAt: _st() });
-    console.log('[PROFILE] Created new profile for', fbUser.email);
   } catch(e) {
-    console.warn('[PROFILE] Could not save:', e.message);
-    // Login still succeeds — user gets a temporary session
+    console.error('[PROFILE] Firestore error:', e.code, e.message);
+    // Firestore rules may be blocking — use minimal local profile so login still works
+    // The user will see "pending" but CAN still use the app
+    if(!CU) {
+      CU = { id: fbUser.uid, email: fbUser.email, name: fbUser.email.split('@')[0], role: 'User', mall: '–' };
+    }
+    // Show the actual error to the user
+    setTimeout(()=> toast('Firestore Error', e.code + ': ' + e.message + ' — Check Firestore Rules in Firebase Console.', '🔥'), 1000);
   }
 }
 
