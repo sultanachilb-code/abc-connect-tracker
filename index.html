@@ -1092,34 +1092,43 @@ async function doLogout() {
    INIT
 ───────────────────────────────────── */
 async function loadUserProfile(fbUser) {
+  // Fast: fetch only this user's doc by UID (instant)
   try {
-    const snap = await _db.collection('users').get();
-    USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-  } catch(e) { USERS = []; }
-  // Find current user by email
-  const profile = uByEmail(fbUser.email);
-  if(profile) {
-    CU = profile;
-  } else {
-    // First time — create a pending profile in Firestore
-    const isFirst = USERS.length === 0;
-    CU = {
-      id: fbUser.uid,
-      uid: fbUser.uid,
-      email: fbUser.email,
-      name: fbUser.email.split('@')[0],
-      role: isFirst ? 'Admin' : 'User',  // first user ever = Admin
-      mall: isFirst ? 'ABC HQ' : '–',
-    };
-    // Save to Firestore (non-blocking — login succeeds even if this fails)
-    try {
-      await _db.collection('users').doc(fbUser.uid).set({ ...CU, createdAt: _serverTimestamp() });
-      USERS.push(CU);
-    } catch(e) {
-      console.warn('Could not save user profile to Firestore:', e.code, e.message);
-      // Still allow login — user will show as pending
+    const docSnap = await _db.collection('users').doc(fbUser.uid).get();
+    if(docSnap.exists) {
+      CU = { id: docSnap.id, ...docSnap.data() };
+      // Also try to match by email in case profile was pre-created by admin (different doc ID)
+      if(!CU.email) CU.email = fbUser.email;
+      return;
     }
-  }
+  } catch(e) { console.warn('Profile fetch:', e.message); }
+
+  // Check if admin pre-created this user by email (doc ID will differ from UID)
+  try {
+    const byEmail = await _db.collection('users').where('email','==',fbUser.email).get();
+    if(!byEmail.empty) {
+      const d = byEmail.docs[0];
+      CU = { id: d.id, ...d.data() };
+      // Migrate: save under real UID and remove old doc
+      await _db.collection('users').doc(fbUser.uid).set({ ...CU, id: fbUser.uid, updatedAt: _serverTimestamp() });
+      if(d.id !== fbUser.uid) { try { await _db.collection('users').doc(d.id).delete(); } catch(e){} }
+      CU.id = fbUser.uid;
+      return;
+    }
+  } catch(e) { console.warn('Email lookup:', e.message); }
+
+  // Brand new user — create pending profile
+  const countSnap = await _db.collection('users').get().catch(()=>({empty:false}));
+  CU = {
+    id:    fbUser.uid,
+    email: fbUser.email,
+    name:  fbUser.email.split('@')[0],
+    role:  countSnap.empty ? 'Admin' : 'User',
+    mall:  countSnap.empty ? 'ABC HQ' : '–',
+  };
+  try {
+    await _db.collection('users').doc(fbUser.uid).set({ ...CU, createdAt: _serverTimestamp() });
+  } catch(e) { console.warn('Could not create profile:', e.message); }
 }
 
 function initApp() {
@@ -1301,31 +1310,36 @@ function renderUsers() {
    ADMIN PANEL
 ───────────────────────────────────── */
 async function loadAdminPanel() {
-  // Double-check role at runtime
   if(CU?.role!=='Admin') {
-    document.getElementById('admin-tbody').innerHTML=`<tr><td colspan="6" style="padding:40px;text-align:center;color:#dc2626;font-family:var(--font-display);font-weight:700;font-size:14px;">🚫 Access Denied — Admin only</td></tr>`;
+    document.getElementById('admin-tbody').innerHTML=`<tr><td colspan="8" style="padding:40px;text-align:center;color:#dc2626;font-family:var(--font-display);font-weight:700;font-size:14px;">🚫 Access Denied — Admin only</td></tr>`;
     return;
   }
   const tbody = document.getElementById('admin-tbody');
-  tbody.innerHTML = `<tr><td colspan="6" style="padding:32px;text-align:center;color:var(--grey-400);font-family:var(--font-display);font-size:13px;">⏳ Loading users…</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--grey-400);font-family:var(--font-display);font-size:13px;">⏳ Loading users…</td></tr>`;
+  // Always reload from Firestore when admin panel is opened or refreshed
+  try {
+    const snap = await _db.collection('users').get();
+    USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    populateUserFilter();
+  } catch(e) { console.error('Failed to load users:', e); }
   renderAdminTable();
 }
 
 function renderAdminTable() {
-  if(!CU || CU.role!=='Admin') return; // silently block
+  if(!CU || CU.role!=='Admin') return;
   const tbody = document.getElementById('admin-tbody');
   if(!tbody) return;
   if(USERS.length===0) {
-    tbody.innerHTML=`<tr><td colspan="6"><div class="admin-empty"><span class="ei">👤</span><p>No users found in Firestore</p><small>Log in with any email to auto-create their profile, then assign their role here.</small></div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="8" style="padding:40px;text-align:center;color:var(--grey-400);"><div style="font-size:28px;margin-bottom:8px;">👤</div><div style="font-family:var(--font-display);font-size:13px;font-weight:600;">No users yet</div><div style="font-size:12px;margin-top:4px;">Use the form above to add users, or have them log in first.</div></td></tr>`;
     return;
   }
-  const flagOpts = FLAGSHIPS.map(f=>`<option value="${f}">${f}</option>`).join('');
-  const roleOpts = ROLES.map(r=>`<option value="${r}">${r}</option>`).join('');
-  tbody.innerHTML = USERS.map(u => {
+  tbody.innerHTML = USERS.map((u,i) => {
     const isMe = u.id===CU.id;
+    const isActive = u.name && u.mall && u.mall!=='–';
     return `<tr id="arow-${u.id}">
+      <td style="color:var(--grey-400);font-family:var(--font-display);font-weight:700;font-size:12px;">${i+1}</td>
       <td class="email-cell">${esc(u.email||'–')}</td>
-      <td><input class="inline-inp" id="aname-${u.id}" value="${esc(u.name||'')}" placeholder="Display Name" ${isMe?'style="border-color:var(--blue-300);"':''}></td>
+      <td><input class="inline-inp" id="aname-${u.id}" value="${esc(u.name||'')}" placeholder="Display Name" style="width:140px;${isMe?'border-color:var(--blue-300);':''}"></td>
       <td>
         <select class="inline-sel" id="arole-${u.id}" ${isMe?'disabled title="Cannot change your own role"':''}>
           ${ROLES.map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${r}</option>`).join('')}
@@ -1338,13 +1352,16 @@ function renderAdminTable() {
         </select>
       </td>
       <td>
-        ${u.name && u.mall && u.mall!=='–'
+        ${isActive
           ? `<span class="user-status-dot usd-active"></span><span style="font-size:12px;color:var(--s-solved);font-weight:600;">Active</span>`
-          : `<span class="user-status-dot usd-pending"></span><span style="font-size:12px;color:var(--s-progress);font-weight:600;">Pending Setup</span>`}
+          : `<span class="user-status-dot usd-pending"></span><span style="font-size:12px;color:var(--s-progress);font-weight:600;">Pending</span>`}
       </td>
       <td style="white-space:nowrap;">
         <button class="btn-save-row" onclick="saveUserRow('${u.id}')">Save</button>
         <span class="save-status" id="astatus-${u.id}"></span>
+      </td>
+      <td>
+        ${isMe ? '' : `<button class="btn-danger" onclick="removeUserProfile('${u.id}')" title="Remove user">✕</button>`}
       </td>
     </tr>`;
   }).join('');
@@ -1376,6 +1393,62 @@ async function saveUserRow(userId) {
     statusEl.textContent='✗ Error'; statusEl.className='save-status err';
     toast('Error',e.message,'❌');
   }
+}
+
+async function addUserProfile() {
+  if(!CU || CU.role!=='Admin') { toast('Access Denied','Admins only.','🚫'); return; }
+  const email = document.getElementById('nu-email')?.value?.trim().toLowerCase();
+  const name  = document.getElementById('nu-name')?.value?.trim();
+  const role  = document.getElementById('nu-role')?.value;
+  const mall  = document.getElementById('nu-mall')?.value;
+  const msgEl = document.getElementById('add-user-msg');
+
+  const showMsg = (txt, ok) => {
+    msgEl.style.display='block';
+    msgEl.style.color = ok ? 'var(--s-solved)' : '#dc2626';
+    msgEl.textContent = txt;
+  };
+
+  if(!email) { showMsg('⚠ Email is required.', false); return; }
+  if(!name)  { showMsg('⚠ Display name is required.', false); return; }
+  if(!role)  { showMsg('⚠ Select a role.', false); return; }
+  if(!mall||mall==='')  { showMsg('⚠ Select a flagship.', false); return; }
+
+  // Check if email already exists
+  const existing = USERS.find(u => u.email?.toLowerCase()===email);
+  if(existing) { showMsg('⚠ A user with this email already exists in the table.', false); return; }
+
+  const btn = document.querySelector('#add-user-card .btn-primary');
+  if(btn) { btn.disabled=true; btn.textContent='Adding…'; }
+  msgEl.style.display='none';
+
+  try {
+    // Use email as doc ID placeholder — will be replaced with real UID when they log in
+    // Store with a generated ID so admin can pre-configure before first login
+    const newProfile = { email, name, role, mall, createdAt: _serverTimestamp(), preConfigured: true };
+    const docRef = await _db.collection('users').add(newProfile);
+    showMsg('✓ User profile added successfully! They can now log in.', true);
+    // Clear form
+    ['nu-email','nu-name'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    document.getElementById('nu-role').value='User';
+    document.getElementById('nu-mall').value='';
+    toast('User Added', `${name} (${email}) added successfully.`, '✅');
+  } catch(e) {
+    showMsg('✗ Error: ' + e.message, false);
+    toast('Error', e.message, '❌');
+  } finally {
+    if(btn) { btn.disabled=false; btn.textContent='Add User'; }
+  }
+}
+
+async function removeUserProfile(userId) {
+  if(!CU || CU.role!=='Admin') return;
+  if(userId===CU.id) { toast('Cannot remove yourself.','','⚠️'); return; }
+  if(!confirm('Remove this user profile from the system?')) return;
+  try {
+    await _db.collection('users').doc(userId).delete();
+    toast('User removed.','','✅');
+  } catch(e) { toast('Error', e.message,'❌'); }
 }
 
 /* ─────────────────────────────────────
