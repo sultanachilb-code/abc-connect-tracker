@@ -32,6 +32,9 @@
   window.__fb = { db, auth, collection, doc, getDocs, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot, orderBy, query, serverTimestamp, arrayUnion, signInWithEmailAndPassword, signOut, onAuthStateChanged };
 </script>
 
+<!-- EmailJS SDK for email notifications -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
 <!-- Fonts: Outfit (corporate display) + Source Sans 3 (body) -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -615,6 +618,13 @@ input, select, textarea { font-family: inherit; }
 .toast-title { font-family: var(--font-display); font-weight: 800; font-size: 13px; color: var(--grey-800); margin-bottom: 2px; }
 .toast-body  { font-size: 12px; color: var(--grey-500); }
 
+.btn-excel {
+  background: #16a34a; color: var(--white); border: none; border-radius: var(--radius-sm);
+  padding: 8px 16px; font-family: var(--font-display); font-weight: 700; font-size: 12.5px;
+  cursor: pointer; display: flex; align-items: center; gap: 7px; transition: all .15s; margin-left: auto;
+}
+.btn-excel:hover { background: #15803d; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(22,163,74,.3); }
+
 /* ══════════════════════════════════════
    EMPTY STATE
 ══════════════════════════════════════ */
@@ -653,7 +663,7 @@ input, select, textarea { font-family: inherit; }
         <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       </div>
       <div class="login-brand"><span>ABC</span> Connect</div>
-      <div class="login-sub">Issue Tracker · IT Portal</div>
+      <div class="login-sub">Operations and IT Issue Tracker</div>
     </div>
 
     <div class="field-group" style="margin-top:0;">
@@ -668,7 +678,7 @@ input, select, textarea { font-family: inherit; }
 
     <button class="btn-login" onclick="doLogin()">Sign In →</button>
     <div class="login-err" id="l-err"></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Retail Property Group &nbsp;·&nbsp; Confidential</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships</div>
   </div>
 </div>
 
@@ -770,6 +780,10 @@ input, select, textarea { font-family: inherit; }
             <option>User Issue</option><option>Technical Issue</option><option>Create User</option>
             <option>Suggestions</option><option>Urgent Request</option><option>Bulk User Import</option>
           </select>
+          <button class="btn-excel" onclick="exportExcel()" title="Export to Excel">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            Export Excel
+          </button>
         </div>
         <div id="logs-wrap"></div>
       </div>
@@ -784,31 +798,72 @@ input, select, textarea { font-family: inherit; }
         <div class="admin-header">
           <div class="admin-header-left">
             <h2>🛡️ Admin Panel — User Management</h2>
-            <p>Assign roles and flagships to Firebase authenticated users. Changes apply immediately.</p>
+            <p>Add users by email and assign their role and flagship. No need to wait for them to log in.</p>
           </div>
           <button class="btn-primary" onclick="loadAdminPanel()" style="display:flex;align-items:center;gap:6px;">
             <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#fff;stroke-width:2.5;fill:none;stroke-linecap:round;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-            Refresh Users
+            Refresh
           </button>
         </div>
-        <div class="invite-box">
-          <svg viewBox="0 0 24 24" style="width:28px;height:28px;stroke:var(--blue-600);stroke-width:1.8;fill:none;flex-shrink:0;stroke-linecap:round;"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.22 1.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 7.09a16 16 0 006 6l.55-.55a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/></svg>
-          <p><strong>How to add a new user</strong>Go to Firebase Console → Authentication → Add user (email + password). They will appear here automatically within seconds. Then assign their name, role and flagship below.</p>
+
+        <!-- Add User Card -->
+        <div class="add-user-card" id="add-user-card">
+          <div class="add-user-title">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--blue-600);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+            Add New User Profile
+          </div>
+          <p class="add-user-sub">Enter the email address you created in Firebase Authentication, then fill in their details and click Add User.</p>
+          <div class="add-user-fields">
+            <div class="add-field-group">
+              <label>Firebase Email <span style="color:#dc2626;">*</span></label>
+              <input class="inline-inp" id="nu-email" type="email" placeholder="user@abc.com.lb" style="width:100%;">
+            </div>
+            <div class="add-field-group">
+              <label>Display Name <span style="color:#dc2626;">*</span></label>
+              <input class="inline-inp" id="nu-name" type="text" placeholder="e.g. ABC Verdun" style="width:100%;">
+            </div>
+            <div class="add-field-group">
+              <label>Role <span style="color:#dc2626;">*</span></label>
+              <select class="inline-sel" id="nu-role" style="width:100%;">
+                <option value="">— Role —</option>
+                <option>Admin</option><option>IT</option><option selected>User</option>
+              </select>
+            </div>
+            <div class="add-field-group">
+              <label>Flagship <span style="color:#dc2626;">*</span></label>
+              <select class="inline-sel" id="nu-mall" style="width:100%;">
+                <option value="">— Select Flagship —</option>
+                <option>ABC HQ</option><option>IT Department</option>
+                <option>Verdun Mall</option><option>Achrafieh Mall</option>
+                <option>Dbayeh</option><option>Verdun DS</option><option>Achrafieh DS</option>
+              </select>
+            </div>
+            <div class="add-field-group" style="display:flex;align-items:flex-end;">
+              <button class="btn-primary" onclick="addUserProfile()" style="width:100%;padding:10px;">
+                Add User
+              </button>
+            </div>
+          </div>
+          <div id="add-user-msg" style="margin-top:10px;font-size:12.5px;font-family:var(--font-display);font-weight:600;display:none;"></div>
         </div>
+
+        <!-- Users Table -->
         <div class="admin-table-wrap">
           <table class="admin-tbl">
             <thead>
               <tr>
-                <th>Firebase Email</th>
+                <th>#</th>
+                <th>Email</th>
                 <th>Display Name</th>
                 <th>Role</th>
                 <th>Flagship</th>
                 <th>Status</th>
-                <th>Action</th>
+                <th>Save</th>
+                <th>Remove</th>
               </tr>
             </thead>
             <tbody id="admin-tbody">
-              <tr><td colspan="6" class="admin-empty"><span class="ei">⏳</span><p>Loading users…</p></td></tr>
+              <tr><td colspan="8" class="admin-empty"><span class="ei">⏳</span><p>Loading users…</p></td></tr>
             </tbody>
           </table>
         </div>
@@ -1102,7 +1157,7 @@ function populateUserFilter() {
 
 function updateFbStatus(ok) {
   document.getElementById('fb-dot').className = 'fb-dot' + (ok?'':' offline');
-  document.getElementById('fb-status-txt').textContent = ok ? 'Live — Firebase Firestore connected' : 'Connecting…';
+  document.getElementById('fb-status-txt').textContent = ok ? 'Live' : 'Connecting…';
 }
 
 /* ─────────────────────────────────────
@@ -1371,9 +1426,12 @@ async function submitLog() {
   const fb=window.__fb;
   if(fb) {
     try {
-      await fb.addDoc(fb.collection(fb.db,'logs'), { code, subject, issueType:type, status:'Sent', createdBy:CU.id, createdAt:fb.serverTimestamp(), updatedAt:fb.serverTimestamp(), details:det, messages:[] });
+      const docRef = await fb.addDoc(fb.collection(fb.db,'logs'), { code, subject, issueType:type, status:'Sent', createdBy:CU.id, createdAt:fb.serverTimestamp(), updatedAt:fb.serverTimestamp(), details:det, messages:[] });
       closeOverlay('o-nl'); toast('Log Submitted',`${code} sent to IT team.`,'📨');
       addNotif('New Log Submitted',`${code}: ${subject}`,null);
+      // Email IT + Admin
+      const newLog = { id:docRef.id, code, subject, issueType:type, status:'Sent', createdBy:CU.id };
+      notifyLogEvent(newLog, 'New Log Submitted', `${CU.name||CU.email} submitted a new ${type}: ${subject}`);
     } catch(e) { toast('Error','Could not save to Firebase: '+e.message,'❌'); }
   } else {
     // Fallback local
@@ -1473,6 +1531,8 @@ async function updateStatus(lid, newS) {
       addNotif('Status Updated',`${log.code}: "${old}" → "${newS}"`,lid);
       const sc=S_CLS[newS]||'sent';
       document.getElementById('det-sub').innerHTML=`<span class="sbadge sb-${sc}">${newS}</span> &nbsp; ${log.code} · ${fmtDt(log.createdAt)}`;
+      // Email creator + all relevant users
+      notifyLogEvent(log, 'Status Updated', `Status changed from "${old}" to "${newS}"`);
     } catch(e) { toast('Error',e.message,'❌'); }
   } else { log.status=newS; renderBoard(); renderStats(); toast('Updated (local)',`${log.code} → ${newS}`,'✅'); }
 }
@@ -1511,6 +1571,8 @@ async function sendMsg(lid) {
       c.scrollTop=c.scrollHeight;
       USERS.filter(x=>txt.includes('@'+x.name)&&x.id!==CU.id).forEach(x=>addNotif('Mention',`${CU.name} mentioned you in ${log.code}`,lid));
       addNotif('Log Updated',`New message on ${log.code}`,lid);
+      // Email notification for chatter
+      notifyLogEvent(log, 'New Chatter Message', txt);
     } catch(e){ toast('Error',e.message,'❌'); }
   }
 }
@@ -1560,6 +1622,121 @@ function toast(title,body,icon='ℹ️') {
   setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateX(40px)'; t.style.transition='all .3s'; setTimeout(()=>t.remove(),300); },4500);
 }
 
+/* ─────────────────────────────────────
+   EMAIL NOTIFICATIONS (EmailJS)
+   Setup: emailjs.com → free account →
+   Create service (Gmail/Outlook) →
+   Create template with these variables:
+     {{to_email}} {{to_name}} {{log_code}}
+     {{log_subject}} {{update_type}}
+     {{update_detail}} {{updated_by}}
+   Then paste your IDs below.
+───────────────────────────────────── */
+const EJS = {
+  serviceId:  'service_fde9z74',   // e.g. 'service_abc123'
+  templateId: 'template_yac2zzd',  // e.g. 'template_xyz456'
+  publicKey:  'Kg4cZiHkAepfKM7C2',   // e.g. 'user_AbCdEfGhIj'
+  enabled:    false,               // set true after configuring above
+};
+
+function initEmailJS() {
+  if(EJS.publicKey && EJS.publicKey!=='YOUR_PUBLIC_KEY') {
+    if(typeof emailjs !== 'undefined') {
+      emailjs.init({ publicKey: EJS.publicKey });
+      EJS.enabled = true;
+    }
+  }
+}
+
+async function sendEmail(toUser, updateType, updateDetail, logCode, logSubject) {
+  if(!EJS.enabled || !toUser?.email) return;
+  if(toUser.id === CU.id) return; // don't email yourself
+  try {
+    await emailjs.send(EJS.serviceId, EJS.templateId, {
+      to_email:      toUser.email,
+      to_name:       toUser.name || toUser.email,
+      log_code:      logCode,
+      log_subject:   logSubject,
+      update_type:   updateType,
+      update_detail: updateDetail,
+      updated_by:    CU.name || CU.email,
+      app_name:      'ABC Operations and IT Issue Tracker',
+    });
+    console.log(`Email sent to ${toUser.email}`);
+  } catch(e) {
+    console.warn('EmailJS error:', e);
+  }
+}
+
+// Notify all relevant users about a log event
+async function notifyLogEvent(log, updateType, updateDetail) {
+  const creator = uid(log.createdBy);
+  const itUsers = USERS.filter(u => u.role==='IT' || u.role==='Admin');
+  const targets = new Map();
+  // Always notify the creator
+  if(creator) targets.set(creator.id, creator);
+  // Always notify IT + Admin
+  itUsers.forEach(u => targets.set(u.id, u));
+  // Notify mentioned users from chatter
+  const mentions = (updateDetail||'').match(/@(\S+)/g)||[];
+  mentions.forEach(m => {
+    const name = m.slice(1);
+    const u = USERS.find(x=>x.name===name);
+    if(u) targets.set(u.id, u);
+  });
+  // Remove self
+  targets.delete(CU.id);
+  for(const u of targets.values()) {
+    await sendEmail(u, updateType, updateDetail, log.code, log.subject);
+  }
+}
+
+/* ─────────────────────────────────────
+   EXCEL EXPORT
+───────────────────────────────────── */
+function exportExcel() {
+  const fs = document.getElementById('flt-sl')?.value||'';
+  const ft = document.getElementById('flt-tl')?.value||'';
+  let fl = LOGS.filter(l=>{
+    if(fs && l.status!==fs) return false;
+    if(ft && l.issueType!==ft) return false;
+    if(CU.role==='User' && l.createdBy!==CU.id) return false;
+    return true;
+  });
+
+  // Build CSV content
+  const headers = ['#','Code','Subject','Type','Status','Flagship','Submitted By','Date Submitted','Last Updated','Messages Count'];
+  const rows = fl.map((l,i) => {
+    const cr = uid(l.createdBy);
+    const dt = l.createdAt?.toDate ? l.createdAt.toDate() : new Date(l.createdAt||'');
+    const upd = l.updatedAt?.toDate ? l.updatedAt.toDate() : new Date(l.updatedAt||'');
+    return [
+      i+1,
+      l.code||'',
+      `"${(l.subject||'').replace(/"/g,'""')}"`,
+      l.issueType||'',
+      l.status||'',
+      cr ? cr.mall||'' : '–',
+      cr ? cr.name||cr.email||'' : '–',
+      dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}),
+      upd.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}),
+      (l.messages||[]).length,
+    ].join(',');
+  });
+
+  const csv = [headers.join(','), ...rows].join('
+');
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const now  = new Date();
+  const stamp= `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+  a.href = url; a.download = `ABC_Issue_Tracker_${stamp}.csv`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  toast('Export Ready',`${fl.length} logs exported to Excel/CSV.`,'📊');
+}
+
 
 /* ══════════════════════════════════════════════════════════════
    FIRESTORE SECURITY RULES  (paste in Firebase Console → Rules)
@@ -1606,6 +1783,7 @@ service cloud.firestore {
 ───────────────────────────────────── */
 // Check Firebase auth state on load
 window.addEventListener('load', ()=>{
+  initEmailJS();
   setTimeout(()=>{
     const fb=window.__fb;
     if(!fb) { updateFbStatus&&updateFbStatus(false); return; }
