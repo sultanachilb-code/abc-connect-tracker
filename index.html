@@ -715,7 +715,7 @@ input, select, textarea { font-family: inherit; }
 
     <button class="btn-login" id="btn-login" onclick="doLogin()">Sign In →</button>
     <div class="login-err" id="l-err"></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships &nbsp;·&nbsp; <strong style="color:var(--grey-500);">v2.2</strong></div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--grey-400);letter-spacing:.5px;">ABC Issue Tracker &nbsp;·&nbsp; All Flagships &nbsp;·&nbsp; <strong style="color:var(--grey-500);">v2.3</strong></div>
   </div>
 </div>
 
@@ -1161,11 +1161,11 @@ function initApp() {
   document.getElementById('ni-users').style.display  = isPrivileged ? 'flex':'none';
   document.getElementById('ni-admin').style.display  = CU.role==='Admin' ? 'flex':'none';
   // ── Hide New Log button for pending/unassigned users ──
-  const isPending = !CU.mall || CU.mall==='–';
+  const isPending = (!CU.mall || CU.mall==='–') && CU.role!=='Admin';
   const nlBtn = document.getElementById('btn-nl');
   if(nlBtn) nlBtn.style.display = isPending ? 'none' : 'flex';
-  // ── Show pending warning if not yet set up ──
-  if(isPending && CU.role!=='Admin') {
+  // ── Show pending warning only for non-Admin users without a flagship ──
+  if(isPending && CU.role==='User') {
     setTimeout(()=>toast('Profile Pending','Your account is not fully set up yet. Please contact your Admin.','⏳'), 800);
   }
 
@@ -1175,6 +1175,20 @@ function initApp() {
   // Firebase real-time listener for logs
   window._fbOnSnap('users', snap => {
     USERS = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    // Live-update CU if our own profile changed in Firestore (e.g. Admin just set our role)
+    const myProfile = USERS.find(u => u.id === CU?.id);
+    if(myProfile && (myProfile.role !== CU.role || myProfile.mall !== CU.mall || myProfile.name !== CU.name)) {
+      CU = { ...CU, ...myProfile };
+      // Re-apply nav visibility with updated role
+      const isPrivileged = CU.role==='Admin' || CU.role==='IT';
+      document.getElementById('sb-name').textContent = CU.name || CU.email;
+      document.getElementById('sb-role').textContent = CU.role + ' · ' + (CU.mall||'–');
+      document.getElementById('ni-users').style.display = isPrivileged ? 'flex':'none';
+      document.getElementById('ni-admin').style.display = CU.role==='Admin' ? 'flex':'none';
+      const isPending = !CU.mall || CU.mall==='–';
+      const nlBtn = document.getElementById('btn-nl');
+      if(nlBtn) nlBtn.style.display = isPending ? 'none' : 'flex';
+    }
     populateUserFilter();
     if(document.getElementById('pg-users').style.display!=='none') renderUsers();
     if(document.getElementById('pg-admin').style.display!=='none') renderAdminTable();
